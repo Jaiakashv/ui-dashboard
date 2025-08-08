@@ -1,0 +1,90 @@
+.sidebar {
+  transition: all 0.3s ease;
+  z-index: 50;
+  border-right: 1px solid #e5e7eb;
+  background-color: #ffffff;
+}
+
+/* Logo styles */
+.sidebar .logo {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* Navigation styles */
+.sidebar nav {
+  padding: 1rem 0;
+}
+
+.sidebar .nav-item {
+  margin: 0.25rem 0.75rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s;
+}
+
+.sidebar .nav-item:hover {
+  background-color: #f3f4f6;
+}
+
+.sidebar .nav-item.active {
+  background-color: #e0f2fe;
+  color: #0369a1;
+}
+
+.sidebar .nav-item i {
+  width: 20px;
+  text-align: center;
+  margin-right: 12px;
+  font-size: 1.1rem;
+}
+
+/* User profile section */
+.user-profile {
+  border-top: 1px solid #e5e7eb;
+  padding: 1rem;
+  margin-top: auto;
+}
+
+.user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: #dbeafe;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 0.75rem;
+  color: #1d4ed8;
+}
+
+/* Active state for navigation */
+.router-link-active {
+  background-color: #e0f2fe !important;
+  color: #0369a1 !important;
+  font-weight: 500;
+}
+
+.router-link-active i {
+  color: #0369a1 !important;
+}
+
+/* Scrollbar styling */
+.sidebar nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar nav::-webkit-scrollbar-thumb {
+  background: #9ca3af;
+  border-radius: 4px;
+}
+
+.sidebar nav::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
