@@ -1,13 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Button } from 'primereact/button';
 import icon12go from '../assets/12go.png';
 import iconTraveloka from '../assets/traveloka.png';
 import iconBookaway from '../assets/bookaway.png';
 import iconBusx from '../assets/busx.png';
 import iconRedbus from '../assets/redbus.png';
-
-// File metadata will be injected by Vite plugin
-const fileMeta = {};
 
 // Function to format time ago
 const formatTimeAgo = (date) => {
@@ -43,32 +40,44 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
     return () => window.removeEventListener('resize', handleResize);
   }, [activeView, onViewSelect]);
 
-  // State for file metadata
-  const [fileMetadata, setFileMetadata] = useState({});
-
-  // Load file metadata on component mount
-  useEffect(() => {
-    import('virtual:file-meta')
-      .then(module => setFileMetadata(module.default || {}))
-      .catch(e => console.warn('Could not load file metadata', e));
-  }, []);
-
-  // Data menu items with file metadata
-  const dataMenuItems = useMemo(() => {
-    const items = [
-      { label: '12go', icon: icon12go, id: '12go', isImage: true },
-      { disabled: true, label: 'traveloka', icon: iconTraveloka, id: 'traveloka', isImage: true },
-      { disabled: true, label: 'bookaway', icon: iconBookaway, id: 'bookaway', isImage: true },
-      { disabled: true, label: 'busx', icon: iconBusx, id: 'busx', isImage: true },
-      { disabled: true, label: 'redbus', icon: iconRedbus, id: 'redbus', isImage: true },
-    ];
-
-    // Add file modification times if available
-    return items.map(item => ({
-      ...item,
-      lastUpdated: fileMetadata[item.id]?.lastModified || null
-    }));
-  }, [fileMetadata]);
+  // Data menu items
+  const dataMenuItems = useMemo(() => [
+    { 
+      label: '12go', 
+      icon: icon12go, 
+      id: '12go', 
+      isImage: true,
+      lastUpdated: new Date().toISOString() // Using current time as last updated
+    },
+    { 
+      disabled: true, 
+      label: 'traveloka', 
+      icon: iconTraveloka, 
+      id: 'traveloka', 
+      isImage: true 
+    },
+    { 
+      disabled: true, 
+      label: 'bookaway', 
+      icon: iconBookaway, 
+      id: 'bookaway', 
+      isImage: true 
+    },
+    { 
+      disabled: true, 
+      label: 'busx', 
+      icon: iconBusx, 
+      id: 'busx', 
+      isImage: true 
+    },
+    { 
+      disabled: true, 
+      label: 'redbus', 
+      icon: iconRedbus, 
+      id: 'redbus', 
+      isImage: true 
+    }
+  ], []);
 
   const virtualizeMenuItems = [
     { label: 'Popular Routes', icon: 'pi pi-chart-pie', id: 'popular-routes',},
