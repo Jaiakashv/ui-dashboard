@@ -11,9 +11,6 @@ const CustomDashboard = ({ data }) => {
   return (
     <div className="custom-dashboard">
       <div className="grid">
-        <div className="col-12">
-        
-        </div>
         
         <div className="col-12">
           <QueryBuilder 

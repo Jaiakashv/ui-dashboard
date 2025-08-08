@@ -1,10 +1,26 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
+import { Bar, Line, Pie } from 'react-chartjs-2';
+
+// Register ChartJS components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend
+);
 import { Card } from 'primereact/card';
 import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
+import { Dialog } from 'primereact/dialog';
 import { Menu } from 'primereact/menu';
 import { AutoComplete } from 'primereact/autocomplete';
 import { saveAs } from 'file-saver';
@@ -34,7 +50,126 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState([]);
+  const [showChart, setShowChart] = useState(false);
+  const [showChartConfig, setShowChartConfig] = useState(false);
+  const [chartConfig, setChartConfig] = useState({
+    type: 'bar',
+    xAxis: '',
+    yAxis: ''
+  });
   const menuRef = useRef(null);
+
+  const chartTypes = [
+    { label: 'Bar Chart', value: 'bar' },
+    { label: 'Line Chart', value: 'line' },
+    { label: 'Pie Chart', value: 'pie' }
+  ];
+
+  // Get available fields for axes
+  const availableFields = useMemo(() => {
+    if (!results.length) {
+      console.log('No results available for fields');
+      return [];
+    }
+    const fields = Object.keys(results[0] || {});
+    console.log('Available fields:', fields);
+    return fields.map(field => ({
+      label: field,
+      value: field
+    }));
+  }, [results]);
+
+  const handleVisualizeClick = () => {
+    if (results.length === 0) return;
+    
+    // Set default axes if not set
+    if (!chartConfig.xAxis && availableFields.length > 0) {
+      setChartConfig(prev => ({
+        ...prev,
+        xAxis: availableFields[0].value,
+        yAxis: availableFields[1]?.value || availableFields[0].value
+      }));
+    }
+    
+    setShowChartConfig(true);
+  };
+
+  const handleChartGenerate = () => {
+    console.log('Generating chart with config:', chartConfig);
+    if (!chartConfig.xAxis || !chartConfig.yAxis) {
+      console.error('Missing axis configuration');
+      return;
+    }
+    setShowChartConfig(false);
+    setShowChart(true);
+  };
+
+  // Prepare chart data based on user configuration
+  const chartData = useMemo(() => {
+    console.log('Preparing chart data with results:', results.length, 'and config:', chartConfig);
+    if (!results.length || !chartConfig.xAxis || !chartConfig.yAxis) {
+      console.log('Not enough data to render chart');
+      return { 
+        labels: [], 
+        datasets: [],
+        chartType: chartConfig.type || 'bar'
+      };
+    }
+
+    // Group by x-axis value and calculate y-axis values
+    const groupedData = results.reduce((acc, item) => {
+      const xValue = String(item[chartConfig.xAxis] || 'Unknown');
+      const yValue = parseFloat(item[chartConfig.yAxis]) || 0;
+
+      if (!acc[xValue]) {
+        acc[xValue] = [];
+      }
+      acc[xValue].push(yValue);
+      return acc;
+    }, {});
+
+    // Calculate average for each x-axis value
+    const labels = Object.keys(groupedData);
+    const values = labels.map(label => {
+      const nums = groupedData[label];
+      const sum = nums.reduce((a, b) => a + b, 0);
+      return Math.round((sum / nums.length) * 100) / 100; // Round to 2 decimal places
+    });
+
+    // Calculate Y-axis scale
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const range = maxValue - minValue;
+    const stepSize = Math.max(1, Math.ceil(range / 5));
+    const minY = Math.max(0, Math.floor(minValue / stepSize) * stepSize);
+
+    // Generate colors for the chart
+    const backgroundColors = [
+      'rgba(54, 162, 235, 0.6)',
+      'rgba(255, 99, 132, 0.6)',
+      'rgba(75, 192, 192, 0.6)',
+      'rgba(255, 206, 86, 0.6)',
+      'rgba(153, 102, 255, 0.6)'
+    ];
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: chartConfig.yAxis,
+          data: values,
+          backgroundColor: chartConfig.type === 'pie' 
+            ? backgroundColors.slice(0, Math.min(labels.length, 5))
+            : backgroundColors[0],
+          borderColor: 'rgba(255, 255, 255, 0.8)',
+          borderWidth: 1,
+        },
+      ],
+      minY,
+      stepSize,
+      chartType: chartConfig.type
+    };
+  }, [results]);
   
   // Extract unique values for autocomplete
   const getFieldSuggestions = (field) => {
@@ -72,6 +207,8 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
 
   const runQuery = () => {
     setError('');
+    setLoading(true);
+    setShowChart(false);
     if (!data || !Array.isArray(data)) {
       setError('No data available to query');
       return;
@@ -85,7 +222,6 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
       return;
     }
 
-    setLoading(true);
     try {
       const filteredData = data.filter(item =>
         conditions.every(condition => {
@@ -110,7 +246,9 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
       );
 
       setResults(filteredData);
-      if (filteredData.length === 0) setError('No results found matching your criteria');
+      if (filteredData.length === 0) {
+        setError('No results found matching your criteria');
+      }
       if (onRunQuery) onRunQuery(filteredData);
     } catch (error) {
       setError(`Error running query: ${error.message}`);
@@ -164,7 +302,7 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
   return (
     <div className="query-builder">
       <Menu model={exportMenuItems} popup ref={menuRef} id="export_menu" />
-      <Card className="shadow-4 border-round-2xl p-6 bg-white/80 backdrop-blur-sm max-w-5xl mx-auto">
+      <Card className="shadow-4 border-round-2xl p-6 bg-white/80 backdrop-blur-sm w-full">
   {/* Header */}
   <div className="mb-6">
     <h2 className="text-2xl font-extrabold text-gray-900 flex items-center gap-2">
@@ -273,30 +411,111 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
   </div>
 </Card>
 
+      {/* Chart Configuration Dialog */}
+      <Dialog 
+        header="Configure Chart" 
+        visible={showChartConfig} 
+        style={{ width: '50vw' }} 
+        onHide={() => setShowChartConfig(false)}
+      >
+        <div className="p-fluid">
+          <div className="field">
+            <label htmlFor="chartType">Chart Type</label>
+            <Dropdown
+              id="chartType"
+              value={chartConfig.type}
+              options={chartTypes}
+              onChange={(e) => setChartConfig({...chartConfig, type: e.value})}
+              placeholder="Select Chart Type"
+            />
+          </div>
+          
+          <div className="field">
+            <label htmlFor="xAxis">X-Axis</label>
+            <Dropdown
+              id="xAxis"
+              value={chartConfig.xAxis}
+              options={availableFields}
+              onChange={(e) => setChartConfig({...chartConfig, xAxis: e.value})}
+              placeholder="Select X-Axis"
+            />
+          </div>
+          
+          <div className="field">
+            <label htmlFor="yAxis">Y-Axis</label>
+            <Dropdown
+              id="yAxis"
+              value={chartConfig.yAxis}
+              options={availableFields}
+              onChange={(e) => setChartConfig({...chartConfig, yAxis: e.value})}
+              placeholder="Select Y-Axis"
+            />
+          </div>
+          
+          <div className="flex justify-content-end gap-2 mt-4">
+            <Button 
+              label="Cancel" 
+              className="p-button-text" 
+              onClick={() => setShowChartConfig(false)} 
+            />
+            <Button 
+              label="Generate Chart" 
+              onClick={handleChartGenerate}
+              disabled={!chartConfig.xAxis || !chartConfig.yAxis}
+            />
+          </div>
+        </div>
+      </Dialog>
+
       {results.length > 0 && (
        <div className="max-w-screen-xl mx-auto px-4">
        <Card className="mt-6 shadow-3 border-round-lg overflow-hidden">
          {/* Header Section */}
-         <div className="flex flex-column md:flex-row justify-between items-start md:items-center gap-3 p-4 border-bottom-1 border-300 bg-gray-50">
+         <div className="flex justify-between items-center p-4 border-bottom-1 surface-border">
            <div>
-             <h3 className="text-lg md:text-xl font-semibold text-gray-800 m-0">Query Results</h3>
+             <h2 className="text-xl font-semibold m-0">Query Results</h2>
              <p className="text-sm text-gray-600 mt-1">{results.length} records found</p>
            </div>
-           <Button 
-             icon="pi pi-download" 
-             label="Export"
-             className="p-button-outlined p-button-sm"
-             style={{
-               backgroundColor: '#24A0ed',
-               color: 'white',
-               borderRadius: '6px',
-               padding: '8px 14px',
-             }}
-             onClick={(e) => menuRef.current.toggle(e)}
-             aria-controls="export_menu"
-             aria-haspopup
-             disabled={results.length === 0}
-           />
+           <div className="flex gap-2">
+             {/* <Button 
+              
+               icon="pi pi-chart-bar" 
+               label="Visualize"
+               className="p-button-outlined p-button-sm"
+               style={{
+                 backgroundColor: '#2acf7d',
+                 color: 'white',
+                 borderRadius: '6px',
+                 padding: '8px 14px',
+               }}
+               onClick={handleVisualizeClick}
+               disabled={results.length === 0}
+             /> */}
+             <Button 
+               icon="pi pi-download" 
+               label="Export"
+               className="p-button-outlined p-button-sm"
+               style={{
+                 backgroundColor: '#24A0ed',
+                 color: 'white',
+                 borderRadius: '6px',
+                 padding: '8px 14px',
+               }}
+               onClick={(e) => menuRef.current.toggle(e)}
+               aria-controls="export_menu"
+               aria-haspopup
+               disabled={results.length === 0}
+             />
+             <Menu
+               model={[
+                 { label: 'Export as CSV', icon: 'pi pi-file', command: () => exportToCSV() },
+                 { label: 'Export as JSON', icon: 'pi pi-file-export', command: () => exportToJSON() },
+               ]}
+               popup
+               ref={menuRef}
+               id="export_menu"
+             />
+           </div>
          </div>
      
          {/* Scrollable Table Area */}
@@ -314,11 +533,22 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
              ))}
            </DataTable>
          </div>
+         
+         {/* Chart Section */}
+         {showChart && chartData && (
+           <div className="mt-6 p-4 border-round" style={{ backgroundColor: 'white' }}>
+             <h3 className="text-lg font-semibold mb-4">
+               {chartConfig.yAxis} by {chartConfig.xAxis}
+             </h3>
+             <div style={{ height: '400px', border: '1px solid #eee', padding: '10px' }}>
+               {console.log('Rendering chart with data:', chartData)}
+               {renderChart()}
+             </div>
+           </div>
+         )}
        </Card>
      </div>
-     
-     
-      )}
+     )}
     </div>
   );
 };
