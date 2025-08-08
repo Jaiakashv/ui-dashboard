@@ -16,6 +16,7 @@ import PopularRoutes from './components/visualizations/PopularRoutes';
 import PriceGraph from './components/visualizations/PriceGraph';
 import BookingHorizon from './components/visualizations/BookingHorizon';
 import CheapestCarrier from './components/visualizations/CheapestCarrier';
+import CustomDashboard from './components/visualizations/CustomDashboard';
 import ChartTypeSelector, { CHART_TYPES } from './components/visualizations/ChartTypeSelector';
 import { Button } from 'primereact/button';
 
@@ -26,6 +27,7 @@ function App() {
   const [activeProvider, setActiveProvider] = useState('12go');
   const [activeView, setActiveView] = useState('data');
   const [virtualizeView, setVirtualizeView] = useState('popular-routes');
+  const [customView, setCustomView] = useState('query-builder');
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [bookingHorizonData, setBookingHorizonData] = useState([]);
   const [selectedChartType, setSelectedChartType] = useState(CHART_TYPES.DOUGHNUT);
@@ -219,22 +221,22 @@ function App() {
         case 'cheapest-carrier':
           return (
             <div className="space-y-6">
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Cheapest Carriers by Route</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Cheapest Carriers</h1>
               <div className="bg-white p-4 md:p-6 rounded-lg shadow">
                 <CheapestCarrier data={combinedData} />
               </div>
             </div>
           );
 
-        default:
+        case 'custom-dashboard':
           return (
             <div className="space-y-6">
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-6">Visualization Dashboard</h1>
-              <div className="bg-white p-4 md:p-6 rounded-lg shadow">
-                <p className="text-gray-600">Select a view from the sidebar</p>
-              </div>
+              <CustomDashboard data={combinedData} />
             </div>
           );
+
+        default:
+          return <div>Select a view</div>;
       }
     }
 

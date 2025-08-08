@@ -80,10 +80,11 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   ], []);
 
   const virtualizeMenuItems = [
-    { label: 'Popular Routes', icon: 'pi pi-chart-pie', id: 'popular-routes',},
+    { label: 'Popular Routes', icon: 'pi pi-chart-pie', id: 'popular-routes'},
     { disabled: true, label: 'Price Graph', icon: 'pi pi-chart-bar', id: 'price-graph' },
     { disabled: true, label: 'Booking Horizon', icon: 'pi pi-calendar', id: 'booking-horizon' },
     { disabled: true, label: 'Cheapest Carriers', icon: 'pi pi-tag', id: 'cheapest-carrier' },
+    { label: 'Customizable Dashboard', icon: 'pi pi-sliders-h', id: 'custom-dashboard' },
   ];
 
   const handleDataMenuClick = (provider) => {
