@@ -168,7 +168,7 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
   {/* Header */}
   <div className="mb-6">
     <h2 className="text-2xl font-extrabold text-gray-900 flex items-center gap-2">
-      🔍 Enter Your Query
+      Enter Your Query
     </h2>
     <p className="text-sm text-gray-500">
       Set conditions to filter and analyze your data efficiently.
