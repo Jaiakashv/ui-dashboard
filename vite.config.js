@@ -15,6 +15,7 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       output: {
+        external: ['quill'],
         manualChunks: {
           react: ['react', 'react-dom'],
           vendor: ['react-router-dom', 'primereact']
