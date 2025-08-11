@@ -24,6 +24,7 @@ import { Dialog } from 'primereact/dialog';
 import { Menu } from 'primereact/menu';
 import { AutoComplete } from 'primereact/autocomplete';
 import { MultiSelect } from 'primereact/multiselect';
+import { Calendar } from 'primereact/calendar';
 import { saveAs } from 'file-saver';
 
 const operators = [
@@ -66,6 +67,7 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
   const [selectedTos, setSelectedTos] = useState([]);
   const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
   const [selectedOperators, setSelectedOperators] = useState([]);
+  const [customRange, setCustomRange] = useState(null); // [startDate, endDate]
 
   const chartTypes = [
     { label: 'Bar Chart', value: 'bar' },
@@ -251,7 +253,17 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
       return isNaN(t) ? null : new Date(t);
     };
 
-    const dateRange = presets[selectedTimeline]?.();
+    // Build date range from preset or custom
+    let dateRange = null;
+    if (selectedTimeline === 'Custom') {
+      if (Array.isArray(customRange) && customRange[0] && customRange[1]) {
+        const start = new Date(customRange[0]); start.setHours(0,0,0,0);
+        const end = new Date(customRange[1]); end.setHours(23,59,59,999);
+        dateRange = { start, end };
+      }
+    } else {
+      dateRange = presets[selectedTimeline]?.();
+    }
 
     const base = data.filter(item => {
       const fromOk = inSelected(selectedFroms, item['From'] ?? item['from']);
@@ -358,18 +370,29 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
       <Card className="shadow-4 border-round-2xl p-6 bg-white/80 backdrop-blur-sm w-full">
   {/* Header */}
   <div className="mb-6">
-    <div className="dropdownoption flex flex-row gap-2 flex-wrap">
+    <div className="dropdownoption flex flex-row gap-2 flex-wrap mb-8">
       {/* Timeline */}
-      <div className="timeline min-w-[200px]">
+      <div className="timeline min-w-[260px]">
         <Dropdown
           value={selectedTimeline}
           onChange={(e) => setSelectedTimeline(e.value)}
           options={[
-            'Today','Yesterday','Last 7 Days','Last 14 Days','Last 28 Days','Last 30 Days','Last 90 Days','This Month','This Year'
+            'Today','Yesterday','Last 7 Days','Last 14 Days','Last 28 Days','Last 30 Days','Last 90 Days','This Month','This Year','Custom'
           ].map(v => ({ label: v, value: v }))}
           placeholder="Timeframe"
           className="w-full"
         />
+        {selectedTimeline === 'Custom' && (
+          <Calendar
+            value={customRange}
+            onChange={(e) => setCustomRange(e.value)}
+            selectionMode="range"
+            readOnlyInput
+            showIcon
+            placeholder="Select date range"
+            className="w-full mt-2"
+          />
+        )}
       </div>
 
       {/* From */}
@@ -437,8 +460,8 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
       </div>
 
       {/* Submit */}
-      <div className="submit">
-        <Button label="Apply" icon="pi pi-check" onClick={runQuery} />
+      <div className="submit" style={{marginTop:'2px'}}>
+        <Button label="Apply" icon="pi pi-check" onClick={runQuery} style={{backgroundColor:'#007bff',color:'white',borderRadius:'5px',padding:'10px'}} />
       </div>
     </div>
 
