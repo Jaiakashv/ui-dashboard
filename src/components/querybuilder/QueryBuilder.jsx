@@ -1,26 +1,10 @@
-import React, { useState, useRef, useMemo } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, LineElement, PointElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
-import { Bar, Line, Pie } from 'react-chartjs-2';
-
-// Register ChartJS components
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend
-);
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Card } from 'primereact/card';
 import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
-import { Dialog } from 'primereact/dialog';
 import { Menu } from 'primereact/menu';
 import { AutoComplete } from 'primereact/autocomplete';
 import { MultiSelect } from 'primereact/multiselect';
@@ -52,13 +36,6 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [suggestions, setSuggestions] = useState([]);
-  const [showChart, setShowChart] = useState(false);
-  const [showChartConfig, setShowChartConfig] = useState(false);
-  const [chartConfig, setChartConfig] = useState({
-    type: 'bar',
-    xAxis: '',
-    yAxis: ''
-  });
   const menuRef = useRef(null);
 
   // Header filter states
@@ -68,118 +45,29 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
   const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
   const [selectedOperators, setSelectedOperators] = useState([]);
   const [customRange, setCustomRange] = useState(null); // [startDate, endDate]
+  const [selectedDateField, setSelectedDateField] = useState('');
 
-  const chartTypes = [
-    { label: 'Bar Chart', value: 'bar' },
-    { label: 'Line Chart', value: 'line' },
-    { label: 'Pie Chart', value: 'pie' }
-  ];
+  // Build date field options from dataset keys that look like dates/times
+  const dateFieldOptions = useMemo(() => {
+    if (!Array.isArray(data) || data.length === 0) return [];
+    const keys = Array.from(new Set(data.flatMap(obj => Object.keys(obj || {}))));
+    const candidates = keys.filter(k => /date|time/i.test(k));
+    return candidates.map(k => ({ label: k, value: k }));
+  }, [data]);
 
-  // Get available fields for axes
-  const availableFields = useMemo(() => {
-    if (!results.length) {
-      console.log('No results available for fields');
-      return [];
-    }
-    const fields = Object.keys(results[0] || {});
-    console.log('Available fields:', fields);
-    return fields.map(field => ({
-      label: field,
-      value: field
-    }));
-  }, [results]);
-
-  const handleVisualizeClick = () => {
-    if (results.length === 0) return;
-    
-    // Set default axes if not set
-    if (!chartConfig.xAxis && availableFields.length > 0) {
-      setChartConfig(prev => ({
-        ...prev,
-        xAxis: availableFields[0].value,
-        yAxis: availableFields[1]?.value || availableFields[0].value
-      }));
-    }
-    
-    setShowChartConfig(true);
-  };
-
-  const handleChartGenerate = () => {
-    console.log('Generating chart with config:', chartConfig);
-    if (!chartConfig.xAxis || !chartConfig.yAxis) {
-      console.error('Missing axis configuration');
-      return;
-    }
-    setShowChartConfig(false);
-    setShowChart(true);
-  };
-
-  // Prepare chart data based on user configuration
-  const chartData = useMemo(() => {
-    console.log('Preparing chart data with results:', results.length, 'and config:', chartConfig);
-    if (!results.length || !chartConfig.xAxis || !chartConfig.yAxis) {
-      console.log('Not enough data to render chart');
-      return { 
-        labels: [], 
-        datasets: [],
-        chartType: chartConfig.type || 'bar'
-      };
-    }
-
-    // Group by x-axis value and calculate y-axis values
-    const groupedData = results.reduce((acc, item) => {
-      const xValue = String(item[chartConfig.xAxis] || 'Unknown');
-      const yValue = parseFloat(item[chartConfig.yAxis]) || 0;
-
-      if (!acc[xValue]) {
-        acc[xValue] = [];
+  // Default the date field to the DataTable's convention 'Date' if present
+  useEffect(() => {
+    if (!selectedDateField && Array.isArray(data) && data.length) {
+      const keys = Object.keys(data[0] || {});
+      if (keys.includes('Date')) {
+        setSelectedDateField('Date');
+      } else if (dateFieldOptions.length) {
+        setSelectedDateField(dateFieldOptions[0].value);
       }
-      acc[xValue].push(yValue);
-      return acc;
-    }, {});
+    }
+  }, [data, dateFieldOptions, selectedDateField]);
 
-    // Calculate average for each x-axis value
-    const labels = Object.keys(groupedData);
-    const values = labels.map(label => {
-      const nums = groupedData[label];
-      const sum = nums.reduce((a, b) => a + b, 0);
-      return Math.round((sum / nums.length) * 100) / 100; // Round to 2 decimal places
-    });
-
-    // Calculate Y-axis scale
-    const minValue = Math.min(...values);
-    const maxValue = Math.max(...values);
-    const range = maxValue - minValue;
-    const stepSize = Math.max(1, Math.ceil(range / 5));
-    const minY = Math.max(0, Math.floor(minValue / stepSize) * stepSize);
-
-    // Generate colors for the chart
-    const backgroundColors = [
-      'rgba(54, 162, 235, 0.6)',
-      'rgba(255, 99, 132, 0.6)',
-      'rgba(75, 192, 192, 0.6)',
-      'rgba(255, 206, 86, 0.6)',
-      'rgba(153, 102, 255, 0.6)'
-    ];
-
-    return {
-      labels,
-      datasets: [
-        {
-          label: chartConfig.yAxis,
-          data: values,
-          backgroundColor: chartConfig.type === 'pie' 
-            ? backgroundColors.slice(0, Math.min(labels.length, 5))
-            : backgroundColors[0],
-          borderColor: 'rgba(255, 255, 255, 0.8)',
-          borderWidth: 1,
-        },
-      ],
-      minY,
-      stepSize,
-      chartType: chartConfig.type
-    };
-  }, [results]);
+  // removed old chart handlers and memo
   
   // Extract unique values for autocomplete
   const getFieldSuggestions = (field) => {
@@ -218,7 +106,6 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
   const runQuery = () => {
     setError('');
     setLoading(true);
-    setShowChart(false);
     if (!data || !Array.isArray(data)) {
       setError('No data available to query');
       return;
@@ -249,21 +136,93 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
     const inSelected = (arr, val) => arr.length === 0 || arr.map(String).includes(String(val));
     const parseDate = (v) => {
       if (!v) return null;
-      const t = Date.parse(v);
-      return isNaN(t) ? null : new Date(t);
+      // Already a Date
+      if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+      // Numeric timestamp
+      if (typeof v === 'number') {
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      if (typeof v !== 'string') {
+        const d = new Date(v);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      const s = v.trim();
+      // Try ISO and native parse
+      let d = new Date(s);
+      if (!isNaN(d.getTime())) return d;
+      // Handle DD/MM/YYYY or DD/MM/YYYY HH:mm
+      const dmY = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+      if (dmY) {
+        const day = parseInt(dmY[1], 10);
+        const month = parseInt(dmY[2], 10) - 1;
+        let year = parseInt(dmY[3], 10);
+        if (year < 100) year += 2000;
+        const hh = parseInt(dmY[4] ?? '0', 10);
+        const mm = parseInt(dmY[5] ?? '0', 10);
+        const ss = parseInt(dmY[6] ?? '0', 10);
+        d = new Date(year, month, day, hh, mm, ss);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      // Handle YYYY-MM-DD or YYYY-MM-DD HH:mm
+      const yMd = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+      if (yMd) {
+        const year = parseInt(yMd[1], 10);
+        const month = parseInt(yMd[2], 10) - 1;
+        const day = parseInt(yMd[3], 10);
+        const hh = parseInt(yMd[4] ?? '0', 10);
+        const mm = parseInt(yMd[5] ?? '0', 10);
+        const ss = parseInt(yMd[6] ?? '0', 10);
+        d = new Date(year, month, day, hh, mm, ss);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      // Handle DD-MM-YYYY
+      const dmYdash = s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})$/);
+      if (dmYdash) {
+        const day = parseInt(dmYdash[1], 10);
+        const month = parseInt(dmYdash[2], 10) - 1;
+        let year = parseInt(dmYdash[3], 10);
+        if (year < 100) year += 2000;
+        d = new Date(year, month, day);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      // Handle MM/DD/YYYY (US style)
+      const mDy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (mDy) {
+        const month = parseInt(mDy[1], 10) - 1;
+        const day = parseInt(mDy[2], 10);
+        const year = parseInt(mDy[3], 10);
+        d = new Date(year, month, day);
+        return isNaN(d.getTime()) ? null : d;
+      }
+      return null;
     };
 
     // Build date range from preset or custom
     let dateRange = null;
     if (selectedTimeline === 'Custom') {
-      if (Array.isArray(customRange) && customRange[0] && customRange[1]) {
-        const start = new Date(customRange[0]); start.setHours(0,0,0,0);
-        const end = new Date(customRange[1]); end.setHours(23,59,59,999);
+      if (Array.isArray(customRange)) {
+        if (customRange[0] && customRange[1]) {
+          const start = new Date(customRange[0]); start.setHours(0,0,0,0);
+          const end = new Date(customRange[1]); end.setHours(23,59,59,999);
+          dateRange = { start, end };
+        } else if (customRange[0]) {
+          // Single date selected: filter for that whole day
+          const start = new Date(customRange[0]); start.setHours(0,0,0,0);
+          const end = new Date(customRange[0]); end.setHours(23,59,59,999);
+          dateRange = { start, end };
+        }
+      } else if (customRange instanceof Date) {
+        // Defensive: if a single Date was stored instead of range array
+        const start = new Date(customRange); start.setHours(0,0,0,0);
+        const end = new Date(customRange); end.setHours(23,59,59,999);
         dateRange = { start, end };
       }
     } else {
       dateRange = presets[selectedTimeline]?.();
     }
+    // Debug logs
+    console.log('Timeline:', selectedTimeline, 'customRange:', customRange, 'dateRange:', dateRange);
 
     const base = data.filter(item => {
       const fromOk = inSelected(selectedFroms, item['From'] ?? item['from']);
@@ -272,16 +231,31 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
       const operatorOk = inSelected(selectedOperators, item['Operator'] ?? item['operator']);
 
       let timeOk = true;
-      if (dateRange) {
-        const dep = parseDate(item['Departure Time'] ?? item['departureTime'] ?? item['DepartureTime']);
-        const arr = parseDate(item['Arrival Time'] ?? item['arrivalTime'] ?? item['ArrivalTime']);
-        const anyDate = dep || arr;
-        if (anyDate) {
-          timeOk = anyDate >= dateRange.start && anyDate <= dateRange.end;
+      if (dateRange && dateRange.start && dateRange.end) {
+        // Prefer the explicitly selected date field if provided
+        let foundDate = selectedDateField ? parseDate(item[selectedDateField]) : null;
+        if (!foundDate) {
+          const dateKeys = [
+            'Departure Time','departureTime','DepartureTime',
+            'Arrival Time','arrivalTime','ArrivalTime',
+            'Date','date','Travel Date','travelDate','TravelDate'
+          ];
+          for (const k of dateKeys) {
+            const d = parseDate(item[k]);
+            if (d) { foundDate = d; break; }
+          }
+        }
+        if (foundDate) {
+          timeOk = foundDate >= dateRange.start && foundDate <= dateRange.end;
+        } else {
+          // When a date range is set but row has no recognizable/selected date, exclude it
+          timeOk = false;
         }
       }
-      return fromOk && toOk && transportOk && operatorOk && timeOk;
+      const ok = fromOk && toOk && transportOk && operatorOk && timeOk;
+      return ok;
     });
+    console.log('Base filtered count:', base.length, 'of', data.length);
 
     const hasValidCondition = conditions.some(
       cond => cond.field && cond.value && cond.operator
@@ -393,6 +367,20 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
             className="w-full mt-2"
           />
         )}
+      </div>
+
+      {/* Date Field */}
+      <div className="date-field min-w-[220px]">
+        <Dropdown
+          value={selectedDateField}
+          onChange={(e) => setSelectedDateField(e.value)}
+          options={dateFieldOptions}
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Date Field"
+          className="w-full"
+          showClear
+        />
       </div>
 
       {/* From */}
@@ -571,61 +559,7 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
   </div>
 </Card>
 
-      {/* Chart Configuration Dialog */}
-      <Dialog 
-        header="Configure Chart" 
-        visible={showChartConfig} 
-        style={{ width: '50vw' }} 
-        onHide={() => setShowChartConfig(false)}
-      >
-        <div className="p-fluid">
-          <div className="field">
-            <label htmlFor="chartType">Chart Type</label>
-            <Dropdown
-              id="chartType"
-              value={chartConfig.type}
-              options={chartTypes}
-              onChange={(e) => setChartConfig({...chartConfig, type: e.value})}
-              placeholder="Select Chart Type"
-            />
-          </div>
-          
-          <div className="field">
-            <label htmlFor="xAxis">X-Axis</label>
-            <Dropdown
-              id="xAxis"
-              value={chartConfig.xAxis}
-              options={availableFields}
-              onChange={(e) => setChartConfig({...chartConfig, xAxis: e.value})}
-              placeholder="Select X-Axis"
-            />
-          </div>
-          
-          <div className="field">
-            <label htmlFor="yAxis">Y-Axis</label>
-            <Dropdown
-              id="yAxis"
-              value={chartConfig.yAxis}
-              options={availableFields}
-              onChange={(e) => setChartConfig({...chartConfig, yAxis: e.value})}
-              placeholder="Select Y-Axis"
-            />
-          </div>
-          
-          <div className="flex justify-content-end gap-2 mt-4">
-            <Button 
-              label="Cancel" 
-              className="p-button-text" 
-              onClick={() => setShowChartConfig(false)} 
-            />
-            <Button 
-              label="Generate Chart" 
-              onClick={handleChartGenerate}
-              disabled={!chartConfig.xAxis || !chartConfig.yAxis}
-            />
-          </div>
-        </div>
-      </Dialog>
+    
 
       {results.length > 0 && (
        <div className="max-w-screen-xl mx-auto px-4">
