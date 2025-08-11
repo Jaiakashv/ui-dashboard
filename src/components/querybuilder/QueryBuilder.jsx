@@ -23,6 +23,7 @@ import { Column } from 'primereact/column';
 import { Dialog } from 'primereact/dialog';
 import { Menu } from 'primereact/menu';
 import { AutoComplete } from 'primereact/autocomplete';
+import { MultiSelect } from 'primereact/multiselect';
 import { saveAs } from 'file-saver';
 
 const operators = [
@@ -58,6 +59,13 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
     yAxis: ''
   });
   const menuRef = useRef(null);
+
+  // Header filter states
+  const [selectedTimeline, setSelectedTimeline] = useState('Last 14 Days');
+  const [selectedFroms, setSelectedFroms] = useState([]);
+  const [selectedTos, setSelectedTos] = useState([]);
+  const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
+  const [selectedOperators, setSelectedOperators] = useState([]);
 
   const chartTypes = [
     { label: 'Bar Chart', value: 'bar' },
@@ -214,16 +222,61 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
       return;
     }
 
+    // 1) Apply header filters first
+    const presets = {
+      'Today': () => {
+        const start = new Date(); start.setHours(0,0,0,0);
+        const end = new Date(); end.setHours(23,59,59,999);
+        return { start, end };
+      },
+      'Yesterday': () => {
+        const d = new Date(); d.setDate(d.getDate() - 1);
+        const start = new Date(d); start.setHours(0,0,0,0);
+        const end = new Date(d); end.setHours(23,59,59,999);
+        return { start, end };
+      },
+      'Last 7 Days': () => { const end = new Date(); const start = new Date(); start.setDate(end.getDate()-6); start.setHours(0,0,0,0); end.setHours(23,59,59,999); return { start, end }; },
+      'Last 14 Days': () => { const end = new Date(); const start = new Date(); start.setDate(end.getDate()-13); start.setHours(0,0,0,0); end.setHours(23,59,59,999); return { start, end }; },
+      'Last 28 Days': () => { const end = new Date(); const start = new Date(); start.setDate(end.getDate()-27); start.setHours(0,0,0,0); end.setHours(23,59,59,999); return { start, end }; },
+      'Last 30 Days': () => { const end = new Date(); const start = new Date(); start.setDate(end.getDate()-29); start.setHours(0,0,0,0); end.setHours(23,59,59,999); return { start, end }; },
+      'Last 90 Days': () => { const end = new Date(); const start = new Date(); start.setDate(end.getDate()-89); start.setHours(0,0,0,0); end.setHours(23,59,59,999); return { start, end }; },
+      'This Month': () => { const now = new Date(); const start = new Date(now.getFullYear(), now.getMonth(), 1); const end = new Date(now.getFullYear(), now.getMonth()+1, 0, 23,59,59,999); return { start, end }; },
+      'This Year': () => { const now = new Date(); const start = new Date(now.getFullYear(), 0, 1); const end = new Date(now.getFullYear(), 11, 31, 23,59,59,999); return { start, end }; },
+    };
+
+    const inSelected = (arr, val) => arr.length === 0 || arr.map(String).includes(String(val));
+    const parseDate = (v) => {
+      if (!v) return null;
+      const t = Date.parse(v);
+      return isNaN(t) ? null : new Date(t);
+    };
+
+    const dateRange = presets[selectedTimeline]?.();
+
+    const base = data.filter(item => {
+      const fromOk = inSelected(selectedFroms, item['From'] ?? item['from']);
+      const toOk = inSelected(selectedTos, item['To'] ?? item['to']);
+      const transportOk = inSelected(selectedTransportTypes, item['Transport Type'] ?? item['TransportType'] ?? item['transportType']);
+      const operatorOk = inSelected(selectedOperators, item['Operator'] ?? item['operator']);
+
+      let timeOk = true;
+      if (dateRange) {
+        const dep = parseDate(item['Departure Time'] ?? item['departureTime'] ?? item['DepartureTime']);
+        const arr = parseDate(item['Arrival Time'] ?? item['arrivalTime'] ?? item['ArrivalTime']);
+        const anyDate = dep || arr;
+        if (anyDate) {
+          timeOk = anyDate >= dateRange.start && anyDate <= dateRange.end;
+        }
+      }
+      return fromOk && toOk && transportOk && operatorOk && timeOk;
+    });
+
     const hasValidCondition = conditions.some(
       cond => cond.field && cond.value && cond.operator
     );
-    if (!hasValidCondition) {
-      setError('Please add at least one condition to run the query');
-      return;
-    }
 
     try {
-      const filteredData = data.filter(item =>
+      const filteredData = (!hasValidCondition ? base : base).filter(item =>
         conditions.every(condition => {
           if (!condition.field || !condition.value) return true;
 
@@ -305,6 +358,90 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
       <Card className="shadow-4 border-round-2xl p-6 bg-white/80 backdrop-blur-sm w-full">
   {/* Header */}
   <div className="mb-6">
+    <div className="dropdownoption flex flex-row gap-2 flex-wrap">
+      {/* Timeline */}
+      <div className="timeline min-w-[200px]">
+        <Dropdown
+          value={selectedTimeline}
+          onChange={(e) => setSelectedTimeline(e.value)}
+          options={[
+            'Today','Yesterday','Last 7 Days','Last 14 Days','Last 28 Days','Last 30 Days','Last 90 Days','This Month','This Year'
+          ].map(v => ({ label: v, value: v }))}
+          placeholder="Timeframe"
+          className="w-full"
+        />
+      </div>
+
+      {/* From */}
+      <div className="from min-w-[220px]">
+        <MultiSelect
+          value={selectedFroms}
+          onChange={(e) => setSelectedFroms(e.value)}
+          options={useMemo(() => getFieldSuggestions('From').map(v => ({ label: v, value: v })), [data])}
+          optionLabel="label"
+          optionValue="value"
+          display="chip"
+          placeholder="Departure Country"
+          className="w-full"
+          filter
+          showSelectAll
+        />
+      </div>
+
+      {/* To */}
+      <div className="to min-w-[220px]">
+        <MultiSelect
+          value={selectedTos}
+          onChange={(e) => setSelectedTos(e.value)}
+          options={useMemo(() => getFieldSuggestions('To').map(v => ({ label: v, value: v })), [data])}
+          optionLabel="label"
+          optionValue="value"
+          display="chip"
+          placeholder="Arrival Country"
+          className="w-full"
+          filter
+          showSelectAll
+        />
+      </div>
+
+      {/* Transport Type */}
+      <div className="transport-type min-w-[220px]">
+        <MultiSelect
+          value={selectedTransportTypes}
+          onChange={(e) => setSelectedTransportTypes(e.value)}
+          options={useMemo(() => getFieldSuggestions('Transport Type').map(v => ({ label: v, value: v })), [data])}
+          optionLabel="label"
+          optionValue="value"
+          display="chip"
+          placeholder="Travel Mode"
+          className="w-full"
+          filter
+          showSelectAll
+        />
+      </div>
+
+      {/* Operator (data operator, not query op list) */}
+      <div className="operator min-w-[220px]">
+        <MultiSelect
+          value={selectedOperators}
+          onChange={(e) => setSelectedOperators(e.value)}
+          options={useMemo(() => getFieldSuggestions('Operator').map(v => ({ label: v, value: v })), [data])}
+          optionLabel="label"
+          optionValue="value"
+          display="chip"
+          placeholder="Operator"
+          className="w-full"
+          filter
+          showSelectAll
+        />
+      </div>
+
+      {/* Submit */}
+      <div className="submit">
+        <Button label="Apply" icon="pi pi-check" onClick={runQuery} />
+      </div>
+    </div>
+
     <h2 className="text-2xl font-extrabold text-gray-900 flex items-center gap-2">
       Enter Your Query
     </h2>
@@ -533,19 +670,6 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
              ))}
            </DataTable>
          </div>
-         
-         {/* Chart Section */}
-         {showChart && chartData && (
-           <div className="mt-6 p-4 border-round" style={{ backgroundColor: 'white' }}>
-             <h3 className="text-lg font-semibold mb-4">
-               {chartConfig.yAxis} by {chartConfig.xAxis}
-             </h3>
-             <div style={{ height: '400px', border: '1px solid #eee', padding: '10px' }}>
-               {console.log('Rendering chart with data:', chartData)}
-               {renderChart()}
-             </div>
-           </div>
-         )}
        </Card>
      </div>
      )}
