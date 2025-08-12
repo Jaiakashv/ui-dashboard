@@ -43,8 +43,11 @@ const ComparePage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedColumn, setSelectedColumn] = useState(1); // Default to first column
-  const [selectedColumns, setSelectedColumns] = useState([]);
-  const [selectedRows, setSelectedRows] = useState([]);
+  const [selectedColumns, setSelectedColumns] = useState([sectionItems.columns[0]]); // Default to first column
+  const [selectedRows, setSelectedRows] = useState([
+    sectionItems.rows[0], // Total Routes
+    sectionItems.rows[1]  // Mean Price Average
+  ]);
   const [isComparing, setIsComparing] = useState(false);
 
   // Extract unique values for dropdown suggestions
@@ -129,6 +132,14 @@ const ComparePage = () => {
   // Memoize the section items to prevent unnecessary re-renders
   const memoizedSectionItems = useMemo(() => sectionItems, []);
 
+  // Update selected columns when selectedColumn changes
+  useEffect(() => {
+    const column = memoizedSectionItems.columns.find(col => col.id === selectedColumn);
+    if (column) {
+      setSelectedColumns([column]);
+    }
+  }, [selectedColumn, memoizedSectionItems.columns]);
+
   // Handle row selection changes from sidebar
   const handleRowSelectionChange = useCallback((rowIds) => {
     const selected = memoizedSectionItems.rows.filter(row => rowIds.includes(row.id));
@@ -138,12 +149,7 @@ const ComparePage = () => {
   // Handle column selection changes from sidebar
   const handleColumnChange = useCallback((columnId) => {
     setSelectedColumn(columnId);
-    // Map column ID to the actual column object
-    const column = memoizedSectionItems.columns.find(col => col.id === columnId);
-    if (column) {
-      setSelectedColumns([column]);
-    }
-  }, [memoizedSectionItems.columns]);
+  }, []);
 
   return (
     <div className="flex flex-col h-screen">
@@ -286,7 +292,7 @@ const ComparePage = () => {
               {loading ? (
                 <div className="flex items-center justify-center h-full">
                   <i className="pi pi-spin pi-spinner text-2xl text-blue-500"></i>
-                  <span className="ml-2">Loading data from {API_BASE_URL}...</span>
+                  <span className="ml-2">Loading data</span>
                 </div>
               ) : error ? (
                 <div className="bg-red-50 p-4 rounded-md text-red-700">
@@ -295,7 +301,7 @@ const ComparePage = () => {
                     <span>{error}</span>
                   </div>
                   <div className="mt-2 text-sm">
-                    Make sure your backend server is running at {API_BASE_URL}
+                    Make sure your backend server is running
                   </div>
                 </div>
               ) : isComparing ? (
