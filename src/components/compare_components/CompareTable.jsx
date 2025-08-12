@@ -15,15 +15,27 @@ const CompareTable = ({ data, columns, rows, selectedFroms, selectedTos, selecte
   // Get unique providers from the data
   const providers = [...new Set(data.map(item => item.source || 'Unknown'))];
   
-  // Define the metrics to display as rows
-  const metrics = [
-    { name: 'Total Routes', key: 'totalRoutes' },
-    { name: 'Mean Price', key: 'meanPrice' },
-    { name: 'Lowest Price', key: 'lowestPrice' },
-    { name: 'Highest Price', key: 'highestPrice' },
-    { name: 'Median Price', key: 'medianPrice' },
-    { name: 'No of Unique Providers', key: 'uniqueProviders' }
-  ];
+  // Map of all possible metrics with their display names and calculation keys
+  const allMetrics = {
+    'Total Routes': { key: 'totalRoutes' },
+    'Mean Price Average': { key: 'meanPrice' },
+    'Price': { key: 'price' },
+    'Lowest Price': { key: 'lowestPrice' },
+    'Highest Price': { key: 'highestPrice' },
+    'Median Price': { key: 'medianPrice' },
+    'No of Unique Providers': { key: 'uniqueProviders' },
+    'Standard Deviation': { key: 'standardDeviation' },
+    'Cheapest Carriers': { key: 'cheapestCarriers' },
+    'Routes (bus, train, etc.)': { key: 'routeTypes' }
+  };
+  
+  // Filter metrics based on selected rows and map to consistent format
+  const metrics = rows
+    .filter(row => allMetrics[row.name])
+    .map(row => ({
+      name: row.name,
+      key: allMetrics[row.name].key
+    }));
 
   // Process data to create comparison data structure
   const processData = () => {
@@ -46,16 +58,20 @@ const CompareTable = ({ data, columns, rows, selectedFroms, selectedTos, selecte
           provider,
           routes: [],
           prices: [],
-          operators: new Set()
+          operators: new Set(),
+          transportTypes: new Set()
         };
       }
       
       // Collect all routes and prices for calculations
       acc[provider].routes.push(item);
       
-      // Track unique operators
+      // Track unique operators and transport types
       if (item['Operator']) {
         acc[provider].operators.add(item['Operator']);
+      }
+      if (item['Transport Type']) {
+        acc[provider].transportTypes.add(item['Transport Type']);
       }
       
       // Extract numeric price for calculations
@@ -72,26 +88,50 @@ const CompareTable = ({ data, columns, rows, selectedFroms, selectedTos, selecte
     const providerMetrics = {};
     
     providers.forEach(provider => {
-      const providerData = groupedData[provider] || { routes: [], prices: [], operators: new Set() };
+      const providerData = groupedData[provider] || { 
+        routes: [], 
+        prices: [], 
+        operators: new Set(),
+        transportTypes: new Set()
+      };
+      
       const { routes, prices } = providerData;
+      const priceSum = prices.reduce((a, b) => a + b, 0);
+      const priceCount = prices.length;
+      const meanPrice = priceCount > 0 ? priceSum / priceCount : null;
+      
+      // Calculate standard deviation if needed
+      const stdDev = priceCount > 0 ? 
+        Math.sqrt(prices.reduce((a, b) => a + Math.pow(b - meanPrice, 2), 0) / priceCount) : 
+        null;
       
       // Calculate all metrics for this provider
       providerMetrics[provider] = {
         totalRoutes: routes.length,
-        meanPrice: prices.length > 0 
-          ? prices.reduce((a, b) => a + b, 0) / prices.length 
-          : null,
-        lowestPrice: prices.length > 0 ? Math.min(...prices) : null,
-        highestPrice: prices.length > 0 ? Math.max(...prices) : null,
+        price: meanPrice,  // Alias for Mean Price Average
+        meanPrice: meanPrice,
+        lowestPrice: priceCount > 0 ? Math.min(...prices) : null,
+        highestPrice: priceCount > 0 ? Math.max(...prices) : null,
         medianPrice: (() => {
-          if (prices.length === 0) return null;
+          if (priceCount === 0) return null;
           const sorted = [...prices].sort((a, b) => a - b);
-          const mid = Math.floor(sorted.length / 2);
-          return sorted.length % 2 !== 0 
-            ? sorted[mid] 
-            : (sorted[mid - 1] + sorted[mid]) / 2;
+          const mid = Math.floor(priceCount / 2);
+          return priceCount % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
         })(),
-        uniqueOperators: providerData.operators.size
+        standardDeviation: stdDev,
+        uniqueProviders: providerData.operators.size,
+        uniqueOperators: providerData.operators.size,
+        cheapestCarriers: (() => {
+          if (priceCount === 0) return 'N/A';
+          const minPrice = Math.min(...prices);
+          const cheapestRoutes = routes.filter(route => {
+            const routePrice = parseFloat((route.Price || '').replace(/[^0-9.-]+/g, '') || '0');
+            return !isNaN(routePrice) && routePrice === minPrice;
+          });
+          const carriers = [...new Set(cheapestRoutes.map(r => r.Operator || 'Unknown'))];
+          return carriers.join(', ') || 'N/A';
+        })(),
+        routeTypes: Array.from(providerData.transportTypes).join(', ') || 'N/A'
       };
     });
     
