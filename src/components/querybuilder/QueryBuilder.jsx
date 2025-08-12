@@ -119,9 +119,13 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
         return { start, end };
       },
       'Yesterday': () => {
-        const d = new Date(); d.setDate(d.getDate() - 1);
-        const start = new Date(d); start.setHours(0,0,0,0);
-        const end = new Date(d); end.setHours(23,59,59,999);
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const start = new Date(yesterday);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(yesterday);
+        end.setHours(23, 59, 59, 999);
+        console.log('Yesterday range:', { start, end });
         return { start, end };
       },
       'Last 7 Days': () => { const end = new Date(); const start = new Date(); start.setDate(end.getDate()-6); start.setHours(0,0,0,0); end.setHours(23,59,59,999); return { start, end }; },
@@ -232,6 +236,13 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
 
       let timeOk = true;
       if (dateRange && dateRange.start && dateRange.end) {
+        const dayKey = (d) => {
+          const dd = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+          // use yyyymmdd integer for comparison
+          return dd.getFullYear() * 10000 + (dd.getMonth() + 1) * 100 + dd.getDate();
+        };
+        const startKey = dayKey(dateRange.start);
+        const endKey = dayKey(dateRange.end);
         // Prefer the explicitly selected date field if provided
         let foundDate = selectedDateField ? parseDate(item[selectedDateField]) : null;
         if (!foundDate) {
@@ -246,7 +257,8 @@ const QueryBuilder = ({ onRunQuery, data = [] }) => {
           }
         }
         if (foundDate) {
-          timeOk = foundDate >= dateRange.start && foundDate <= dateRange.end;
+          const fKey = dayKey(foundDate);
+          timeOk = fKey >= startKey && fKey <= endKey;
         } else {
           // When a date range is set but row has no recognizable/selected date, exclude it
           timeOk = false;

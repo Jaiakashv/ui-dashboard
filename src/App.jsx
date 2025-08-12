@@ -1,5 +1,5 @@
 import { PrimeReactProvider } from 'primereact/api';
-import { BrowserRouter as Router } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import 'primereact/resources/themes/lara-light-indigo/theme.css';
 import 'primereact/resources/primereact.min.css';
@@ -19,8 +19,19 @@ import CustomDashboard from './components/visualizations/CustomDashboard';
 import ChartTypeSelector, { CHART_TYPES } from './components/visualizations/ChartTypeSelector';
 import { Button } from 'primereact/button';
 import QueryBuilder from './components/querybuilder/QueryBuilder';
+import ComparePage from './pages/ComparePage';
 
 function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
+  );
+}
+
+function AppContent() {
+  const location = useLocation();
+  const isComparePage = location.pathname === '/compare';
   const [tableData, setTableData] = useState([]);
   const [combinedData, setCombinedData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -128,39 +139,51 @@ function App() {
   };
 
   return (
-    <Router>
-      <PrimeReactProvider>
-        <div className="flex flex-col md:flex-row h-screen bg-gray-100">
-          <div className="md:hidden flex items-center justify-between p-4 bg-white shadow-sm">
-            <Button icon="pi pi-bars" className="p-button-text p-button-rounded" onClick={toggleSidebar} aria-label="Menu" />
-            <h1 className="text-xl font-semibold text-blue-700">Trip Dashboard</h1>
-            <div className="w-10"></div>
-          </div>
+    <PrimeReactProvider>
+      <div className="flex flex-col md:flex-row h-screen bg-gray-100">
+        {!isComparePage && (
+          <>
+            <div className="md:hidden flex items-center justify-between p-4 bg-white shadow-sm">
+              <Button icon="pi pi-bars" className="p-button-text p-button-rounded" onClick={toggleSidebar} aria-label="Menu" />
+              <h1 className="text-xl font-semibold text-blue-700">Trip Dashboard</h1>
+              <div className="w-10"></div>
+            </div>
 
-          <div className={`${sidebarVisible ? 'block' : 'hidden'} md:block fixed md:static z-50 md:z-auto h-full`}>
-            <Sidebar
-              onProviderSelect={handleMenuItemClick}
-              onViewSelect={(view) => {
-                setActiveView(view);
-                if (window.innerWidth < 768) setSidebarVisible(false);
-              }}
-              onVirtualizeViewSelect={handleVirtualizeMenuClick}
-              activeProvider={activeView === 'virtualize' ? virtualizeView : activeProvider}
-              activeView={activeView}
-              virtualizeView={virtualizeView}
-            />
-          </div>
+            <div className={`${sidebarVisible ? 'block' : 'hidden'} md:block fixed md:static z-50 md:z-auto h-full`}>
+              <Sidebar
+                onProviderSelect={handleMenuItemClick}
+                onViewSelect={(view) => {
+                  setActiveView(view);
+                  if (window.innerWidth < 768) setSidebarVisible(false);
+                }}
+                onVirtualizeViewSelect={handleVirtualizeMenuClick}
+                activeProvider={activeView === 'data' ? activeProvider : null}
+                activeView={activeView}
+                virtualizeView={virtualizeView}
+              />
+            </div>
 
-          {sidebarVisible && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden" onClick={() => setSidebarVisible(false)}></div>
-          )}
+            {sidebarVisible && (
+              <div 
+                className="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden" 
+                onClick={() => setSidebarVisible(false)}
+              ></div>
+            )}
+          </>
+        )}
 
-          <main className="flex-1 overflow-y-auto pt-16 md:pt-0">
-            <div className="p-4 md:p-6">{renderContent()}</div>
-          </main>
-        </div>
-      </PrimeReactProvider>
-    </Router>
+        <main className="flex-1 overflow-y-auto pt-16 md:pt-0">
+          <Routes>
+            <Route path="/compare" element={<ComparePage />} />
+            <Route path="/" element={
+              <div className="p-4 md:p-6">
+                {renderContent()}
+              </div>
+            } />
+          </Routes>
+        </main>
+      </div>
+    </PrimeReactProvider>
   );
 }
 

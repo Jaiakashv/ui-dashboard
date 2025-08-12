@@ -16,6 +16,7 @@
     "chart.js": "^4.5.0",
     "chartjs-plugin-datalabels": "^2.2.0",
     "file-saver": "^2.0.5",
+    "lucide-react": "^0.539.0",
     "primeicons": "^7.0.0",
     "primereact": "^10.9.6",
     "quill": "^2.0.3",
@@ -23,7 +24,7 @@
     "react-chartjs-2": "^5.3.0",
     "react-dom": "^19.1.0",
     "react-pro-sidebar": "^1.1.0",
-    "react-router-dom": "^7.7.1"
+    "react-router-dom": "^7.8.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",
