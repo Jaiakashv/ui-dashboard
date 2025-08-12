@@ -1,17 +1,31 @@
 import React from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
+import { Card } from 'primereact/card';
 
 const CompareTable = ({ data, columns, rows, selectedFroms, selectedTos, selectedTransportTypes = [] }) => {
   if (!data || !data.length || !columns?.length || !rows?.length) {
     return (
       <div className="p-4 text-center text-gray-500">
-        Select columns, rows, and apply filters to see the comparison
+        No data available for the selected filters.
       </div>
     );
   }
 
-  // Process data to create comparison rows
+  // Get unique providers from the data
+  const providers = [...new Set(data.map(item => item.source || 'Unknown'))];
+  
+  // Define the metrics to display as rows
+  const metrics = [
+    { name: 'Total Routes', key: 'totalRoutes' },
+    { name: 'Mean Price', key: 'meanPrice' },
+    { name: 'Lowest Price', key: 'lowestPrice' },
+    { name: 'Highest Price', key: 'highestPrice' },
+    { name: 'Median Price', key: 'medianPrice' },
+    { name: 'No of Unique Providers', key: 'uniqueProviders' }
+  ];
+
+  // Process data to create comparison data structure
   const processData = () => {
     // First, filter the data based on selected 'from', 'to', and transport type filters
     const filteredData = data.filter(item => {
@@ -31,16 +45,23 @@ const CompareTable = ({ data, columns, rows, selectedFroms, selectedTos, selecte
         acc[provider] = {
           provider,
           routes: [],
-          prices: []
+          prices: [],
+          operators: new Set()
         };
       }
       
       // Collect all routes and prices for calculations
       acc[provider].routes.push(item);
       
-      // Extract numeric price for calculations (remove currency symbol and convert to number)
-      const price = parseFloat(item['Price']?.replace(/[^0-9.-]+/g, '')) || 0;
-      if (price > 0) {
+      // Track unique operators
+      if (item['Operator']) {
+        acc[provider].operators.add(item['Operator']);
+      }
+      
+      // Extract numeric price for calculations
+      const priceStr = item['Price']?.toString() || '';
+      const price = parseFloat(priceStr.replace(/[^0-9.-]+/g, ''));
+      if (!isNaN(price) && price > 0) {
         acc[provider].prices.push(price);
       }
       
@@ -48,92 +69,92 @@ const CompareTable = ({ data, columns, rows, selectedFroms, selectedTos, selecte
     }, {});
 
     // Calculate metrics for each provider
-    return Object.values(groupedData).map(providerData => {
-      const { provider, routes, prices } = providerData;
-      const result = { provider };
+    const providerMetrics = {};
+    
+    providers.forEach(provider => {
+      const providerData = groupedData[provider] || { routes: [], prices: [], operators: new Set() };
+      const { routes, prices } = providerData;
       
-      // Calculate metrics for each requested row
-      rows.forEach(row => {
-        switch(row.name) {
-          case 'Total Routes':
-            result['Total Routes'] = routes.length;
-            break;
-            
-          case 'Mean Price Average':
-            result['Mean Price Average'] = prices.length 
-              ? `₹${(prices.reduce((a, b) => a + b, 0) / prices.length).toFixed(2)}`
-              : 'N/A';
-            break;
-            
-          case 'Lowest Price':
-            result['Lowest Price'] = prices.length 
-              ? `₹${Math.min(...prices).toFixed(2)}`
-              : 'N/A';
-            break;
-            
-          case 'Highest Price':
-            result['Highest Price'] = prices.length 
-              ? `₹${Math.max(...prices).toFixed(2)}`
-              : 'N/A';
-            break;
-            
-          case 'Median Price':
-            if (prices.length) {
-              const sorted = [...prices].sort((a, b) => a - b);
-              const middle = Math.floor(sorted.length / 2);
-              const median = sorted.length % 2 === 0 
-                ? (sorted[middle - 1] + sorted[middle]) / 2 
-                : sorted[middle];
-              result['Median Price'] = `₹${median.toFixed(2)}`;
-            } else {
-              result['Median Price'] = 'N/A';
-            }
-            break;
-            
-          case 'No of Unique Providers':
-            const uniqueProviders = new Set(routes.map(r => r['Operator']));
-            result['No of Unique Providers'] = uniqueProviders.size;
-            break;
-            
-          default:
-            result[row.name] = 'N/A';
-        }
-      });
-      
-      return result;
+      // Calculate all metrics for this provider
+      providerMetrics[provider] = {
+        totalRoutes: routes.length,
+        meanPrice: prices.length > 0 
+          ? prices.reduce((a, b) => a + b, 0) / prices.length 
+          : null,
+        lowestPrice: prices.length > 0 ? Math.min(...prices) : null,
+        highestPrice: prices.length > 0 ? Math.max(...prices) : null,
+        medianPrice: (() => {
+          if (prices.length === 0) return null;
+          const sorted = [...prices].sort((a, b) => a - b);
+          const mid = Math.floor(sorted.length / 2);
+          return sorted.length % 2 !== 0 
+            ? sorted[mid] 
+            : (sorted[mid - 1] + sorted[mid]) / 2;
+        })(),
+        uniqueOperators: providerData.operators.size
+      };
     });
+    
+    return providerMetrics;
   };
 
-  const tableData = processData();
+  const providerMetrics = processData();
+  
+  // Format a price value with currency symbol
+  const formatPrice = (value) => {
+    if (value === null || value === undefined) return 'N/A';
+    return `₹${value.toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`;
+  };
 
   return (
-    <div className="bg-white rounded-lg shadow overflow-hidden">
-      <DataTable 
-        value={tableData}
-        scrollable 
-        scrollHeight="flex"
-        className="p-datatable-sm"
-        rowHover
-        stripedRows
-      >
-        <Column 
-          field="provider" 
-          header="Provider" 
-          style={{ minWidth: '150px' }}
-          frozen
-          className="font-medium"
-        />
-        {rows.map(row => (
-          <Column 
-            key={row.id}
-            field={row.name}
-            header={row.name}
-            style={{ minWidth: '150px' }}
-            body={(rowData) => rowData[row.name] ?? 'N/A'}
-            className="text-center"
-          />
-        ))}
-      </DataTable>
+    <div className="compare-table-container">
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="min-w-full bg-white">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider bg-[#3a4b61]">
+                providers
+                </th>
+                {providers.map(provider => (
+                  <th key={provider} className="px-6 py-3 text-center text-xs font-medium text-white uppercase tracking-wider bg-[#3a4b61]">
+                    {provider}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {metrics.map((metric, idx) => (
+                <tr key={metric.key} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {metric.name}
+                  </td>
+                  {providers.map(provider => (
+                    <td key={`${provider}-${metric.key}`} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                      {(() => {
+                        const value = providerMetrics[provider]?.[metric.key];
+                        if (value === null || value === undefined) return 'N/A';
+                        
+                        // Format based on metric type
+                        if (metric.key === 'meanPrice' || 
+                            metric.key === 'lowestPrice' || 
+                            metric.key === 'highestPrice' ||
+                            metric.key === 'medianPrice') {
+                          return formatPrice(value);
+                        }
+                        return value;
+                      })()}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 };
