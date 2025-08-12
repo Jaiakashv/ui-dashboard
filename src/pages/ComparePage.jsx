@@ -60,6 +60,144 @@ const ComparePage = () => {
     return Array.from(values).sort();
   };
 
+  // Parse date from string or Date object
+  const parseDate = (v) => {
+    if (!v) return null;
+    // Already a Date
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+    
+    // ISO string or timestamp
+    if (typeof v === 'string' || typeof v === 'number') {
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    
+    return null;
+  };
+  
+  // Get date range based on selected timeline
+  const getDateRange = () => {
+    const now = new Date();
+    
+    const ranges = {
+      'Today': () => { 
+        const start = new Date(); 
+        start.setHours(0,0,0,0); 
+        const end = new Date(); 
+        end.setHours(23,59,59,999); 
+        return { start, end }; 
+      },
+      'Yesterday': () => { 
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const start = new Date(yesterday);
+        start.setHours(0,0,0,0);
+        const end = new Date(yesterday);
+        end.setHours(23,59,59,999);
+        return { start, end };
+      },
+      'Last 7 Days': () => { 
+        const end = new Date(); 
+        const start = new Date(); 
+        start.setDate(end.getDate() - 6); 
+        start.setHours(0,0,0,0); 
+        end.setHours(23,59,59,999); 
+        return { start, end }; 
+      },
+      'Last 14 Days': () => { 
+        const end = new Date(); 
+        const start = new Date(); 
+        start.setDate(end.getDate() - 13); 
+        start.setHours(0,0,0,0); 
+        end.setHours(23,59,59,999); 
+        return { start, end }; 
+      },
+      'This Month': () => { 
+        const now = new Date(); 
+        const start = new Date(now.getFullYear(), now.getMonth(), 1); 
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999); 
+        return { start, end }; 
+      },
+      'This Year': () => { 
+        const now = new Date(); 
+        const start = new Date(now.getFullYear(), 0, 1); 
+        const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999); 
+        return { start, end }; 
+      }
+    };
+
+    // Handle custom range
+    if (selectedTimeline === 'Custom') {
+      if (Array.isArray(customRange) && customRange.length === 2) {
+        const [start, end] = customRange;
+        return { 
+          start: parseDate(start),
+          end: parseDate(end) 
+        };
+      } else if (customRange) {
+        // Single date selected
+        const start = parseDate(customRange);
+        if (start) {
+          const end = new Date(start);
+          end.setHours(23, 59, 59, 999);
+          return { start, end };
+        }
+      }
+      return { start: null, end: null };
+    }
+
+    // Handle preset ranges
+    const rangeFn = ranges[selectedTimeline];
+    return rangeFn ? rangeFn() : { start: null, end: null };
+  };
+
+  // Filter data based on selected date range
+  const filterDataByDateRange = (data) => {
+    if (!data || !Array.isArray(data)) return [];
+    
+    const { start, end } = getDateRange();
+    if (!start || !end) return data;
+    
+    return data.filter(item => {
+      const itemDate = parseDate(item['Date']);
+      if (!itemDate) return false;
+      
+      return itemDate >= start && itemDate <= end;
+    });
+  };
+  
+  // Get filtered data based on all filters
+  const getFilteredData = useCallback(() => {
+    if (!data || !Array.isArray(data)) return [];
+    
+    // Apply date filter
+    let filtered = filterDataByDateRange(data);
+    
+    // Apply transport type filter
+    if (selectedTransportTypes.length > 0) {
+      filtered = filtered.filter(item => 
+        selectedTransportTypes.some(type => 
+          item['Transport Type']?.toLowerCase().includes(type.toLowerCase())
+        )
+      );
+    }
+    
+    // Apply from/to filters
+    if (selectedFroms.length > 0) {
+      filtered = filtered.filter(item => 
+        selectedFroms.includes(item['From'])
+      );
+    }
+    
+    if (selectedTos.length > 0) {
+      filtered = filtered.filter(item => 
+        selectedTos.includes(item['To'])
+      );
+    }
+    
+    return filtered;
+  }, [data, selectedTransportTypes, selectedFroms, selectedTos, selectedTimeline, customRange]);
+
   // Use the same API configuration as in App.jsx
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
   
@@ -150,6 +288,16 @@ const ComparePage = () => {
   const handleColumnChange = useCallback((columnId) => {
     setSelectedColumn(columnId);
   }, []);
+  
+  // Handle date field selection
+  const handleDateFieldChange = (e) => {
+    setSelectedDateField(e.value);
+  };
+  
+  // Memoize the filtered data to prevent unnecessary recalculations
+  const filteredData = useMemo(() => {
+    return getFilteredData();
+  }, [getFilteredData]);
 
   return (
     <div className="flex flex-col h-screen">
@@ -172,8 +320,7 @@ const ComparePage = () => {
                   value={selectedTimeline}
                   onChange={(e) => setSelectedTimeline(e.value)}
                   options={[
-                    'Today', 'Yesterday', 'Last 7 Days', 'Last 14 Days', 'Last 28 Days', 
-                    'Last 30 Days', 'Last 90 Days', 'This Month', 'This Year', 'Custom'
+                    'Today', 'Yesterday', 'Last 7 Days', 'Last 14 Days','This Month', 'This Year', 'Custom'
                   ].map(v => ({ label: v, value: v }))}
                   placeholder="Timeframe"
                   className="w-full text-sm"
@@ -316,7 +463,7 @@ const ComparePage = () => {
                   </div>
                   <div className="flex-1">
                     <CompareTable 
-                      data={data}
+                      data={filteredData}
                       columns={selectedColumns}
                       rows={selectedRows}
                       selectedFroms={selectedFroms}
