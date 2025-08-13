@@ -83,7 +83,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
 
   const location = useLocation();
   const virtualizeMenuItems = [
-    { label: 'Popular Routes', icon: 'pi pi-chart-pie', id: 'popular-routes'},
+    { label: 'Popular Routes', icon: 'pi pi-chart-pie', id: 'popular-routes' },
     { disabled: true, label: 'Price Graph', icon: 'pi pi-chart-bar', id: 'price-graph' },
     { disabled: true, label: 'Booking Horizon', icon: 'pi pi-calendar', id: 'booking-horizon' },
     { disabled: true, label: 'Cheapest Carriers', icon: 'pi pi-tag', id: 'cheapest-carrier' },
@@ -94,11 +94,24 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   const handleDataMenuClick = (provider) => {
     onViewSelect('data');
     onProviderSelect(provider);
+    
+    // Update URL with query parameters
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('view', 'data');
+    searchParams.set('provider', provider);
+    const newUrl = `${window.location.pathname}?${searchParams.toString()}`;
+    window.history.pushState({}, '', newUrl);
   };
 
   const handleVirtualizeMenuClick = (viewId) => {
     onViewSelect('virtualize');
     onVirtualizeViewSelect(viewId);
+    
+    // Update URL with query parameter
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('view', viewId);
+    const newUrl = `${window.location.pathname}?${searchParams.toString()}`;
+    window.history.pushState({}, '', newUrl);
   };
 
   const isDataSelected = activeView === 'data';
@@ -111,7 +124,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
           <li key={item.id} className="p-menuitem">
             <Link 
               to={item.link}
-              className={`p-menuitem-link ${location.pathname === item.link ? 'bg-blue-50 text-blue-600' : ''} flex items-center p-3 hover:bg-gray-100`}
+              className={`p-menuitem-link ${location.pathname === item.link ? 'bg-blue-700 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'} flex items-center p-3`}
             >
               <i className={`${item.icon} mr-2`}></i>
               <span className="p-menuitem-text">{item.label}</span>
@@ -123,7 +136,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
       return (
         <li 
           key={item.id}
-          className={`p-menuitem ${item.disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-100'} ${virtualizeView === item.id ? 'bg-blue-50 text-blue-600' : ''}`}
+          className={`p-menuitem ${item.disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-gray-700'} ${virtualizeView === item.id ? 'bg-[#1E2836] text-white border-l-4 border-blue-500' : 'text-gray-300 hover:text-white'}`}
           onClick={() => !item.disabled && handleVirtualizeMenuClick(item.id)}
         >
           <span className="p-menuitem-link flex items-center p-3">
@@ -140,15 +153,15 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   };
 
   return (
-    <div className="sidebar h-screen w-64 bg-white shadow-lg flex flex-col md:relative fixed md:static z-50">
+    <div className="sidebar h-screen w-64 bg-[#1E2836] text-white shadow-lg flex flex-col md:relative fixed md:static z-50">
       {/* Logo - Hidden on mobile as it's in the header */}
-      <div className="hidden md:flex p-4 border-b border-gray-200 items-center justify-center">
-        <h2 className="text-xl font-semibold text-blue-700">Popular routes</h2>
+      <div className="hidden md:flex p-4 border-b border-gray-600 items-center justify-center">
+        <h2 className="text-xl font-semibold text-white">Popular routes</h2>
       </div>
       
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4">
-        <h1 className="font-semibold text-blue-700 mb-2 px-4" style={{ fontSize: '1.25rem' }}>Data</h1>
+        <h1 className="font-semibold text-white mb-2 px-4" style={{ fontSize: '1.25rem' }}>Data</h1>
         <ul className="space-y-1 px-2 mb-6">
           {dataMenuItems.map((item) => (
             <li key={item.id}>
@@ -157,8 +170,8 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
                 onClick={() => handleDataMenuClick(item.id)}
                 className={`w-full text-left flex items-center px-4 py-2.5 text-sm font-medium rounded-md transition-colors ${
                   isDataSelected && activeProvider === item.id
-                    ? 'bg-blue-50 text-blue-700' 
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                    ? 'bg-[#1E2836] text-white border-l-4 border-blue-500' 
+                    : 'text-gray-300 hover:bg-gray-700 hover:text-white'
                 } ${item.disabled ? 'opacity-50' : ''}`}
               >
                 <div className="flex items-center justify-between w-full">
@@ -172,7 +185,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
                   </div>
                   {item.lastUpdated && (
                     <span 
-                      className="text-xs text-gray-500 ml-2 whitespace-nowrap px-1.5 py-0.5 bg-gray-100 rounded-full"
+                      className="text-xs text-gray-300 ml-2 whitespace-nowrap px-1.5 py-0.5 bg-gray-700 rounded-full"
                       title={`Last updated: ${new Date(item.lastUpdated).toLocaleString()}`}
                     >
                       {formatTimeAgo(item.lastUpdated)}
@@ -184,7 +197,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
           ))}
         </ul>
         
-        <h1 className="font-semibold text-blue-700 mb-2 px-4" style={{ fontSize: '1.25rem' }}>Visualize</h1>
+        <h1 className="font-semibold text-white mb-2 px-4" style={{ fontSize: '1.25rem' }}>Visualize</h1>
         <ul className="space-y-1 px-2">
           {renderVirtualizeMenuItems()}
         </ul>
