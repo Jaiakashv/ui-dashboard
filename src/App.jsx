@@ -180,6 +180,18 @@ function AppContent() {
                 {renderContent()}
               </div>
             } />
+            <Route path="*" element={
+              <div className="p-8 text-center">
+                <h1 className="text-2xl font-bold text-gray-800 mb-4">404 - Page Not Found</h1>
+                <p className="text-gray-600 mb-4">The page you're looking for doesn't exist.</p>
+                <Button 
+                  label="Go to Home" 
+                  icon="pi pi-home" 
+                  className="p-button-outlined"
+                  onClick={() => window.location.href = '/'}
+                />
+              </div>
+            } />
           </Routes>
         </main>
       </div>

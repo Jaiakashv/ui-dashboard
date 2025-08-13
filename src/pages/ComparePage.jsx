@@ -17,7 +17,6 @@ const sectionItems = {
   rows: [
     { id: 1, name: 'Total Routes' },
     { id: 2, name: 'Mean Price Average' },
-    { id: 3, name: 'Price' },
     { id: 4, name: 'Lowest Price' },
     { id: 5, name: 'Highest Price' },
     { id: 6, name: 'Median Price' },
@@ -96,22 +95,23 @@ const ComparePage = () => {
         end.setHours(23,59,59,999);
         return { start, end };
       },
-      'Last 7 Days': () => { 
-        const end = new Date(); 
-        const start = new Date(); 
-        start.setDate(end.getDate() - 6); 
-        start.setHours(0,0,0,0); 
-        end.setHours(23,59,59,999); 
+     'Next 7 Days': () => { 
+        const start = new Date();
+        start.setHours(0, 0, 0, 0); 
+        const end = new Date();
+        end.setDate(end.getDate() + 6); 
+        end.setHours(23, 59, 59, 999);
         return { start, end }; 
-      },
-      'Last 14 Days': () => { 
-        const end = new Date(); 
-        const start = new Date(); 
-        start.setDate(end.getDate() - 13); 
-        start.setHours(0,0,0,0); 
-        end.setHours(23,59,59,999); 
+},
+
+      'Next 14 Days': () => { 
+        const start = new Date();
+        start.setHours(0, 0, 0, 0); 
+        const end = new Date();
+        end.setDate(end.getDate() + 13); 
+        end.setHours(23, 59, 59, 999);
         return { start, end }; 
-      },
+},
       'This Month': () => { 
         const now = new Date(); 
         const start = new Date(now.getFullYear(), now.getMonth(), 1); 
@@ -320,7 +320,7 @@ const ComparePage = () => {
                   value={selectedTimeline}
                   onChange={(e) => setSelectedTimeline(e.value)}
                   options={[
-                    'Today', 'Yesterday', 'Last 7 Days', 'Last 14 Days','This Month', 'This Year', 'Custom'
+                    'Today', 'Yesterday', 'Next 7 Days', 'Next 14 Days','This Month', 'This Year', 'Custom'
                   ].map(v => ({ label: v, value: v }))}
                   placeholder="Timeframe"
                   className="w-full text-sm"
