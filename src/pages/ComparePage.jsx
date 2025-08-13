@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
 import { MultiSelect } from 'primereact/multiselect';
@@ -29,64 +29,230 @@ const sectionItems = {
 
 const ComparePage = () => {
   const navigate = useNavigate();
-  
-  // Query builder states
+  const location = useLocation();
+
+  // -------------------------
+  // Helpers: date formatting / parsing (local timezone safe)
+  // -------------------------
+  const formatDateLocal = useCallback((date) => {
+    if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []); // No dependencies needed as it's a pure function
+
+  // Parse 'YYYY-MM-DD' into a local Date at midnight (avoids timezone shift)
+  const safeParseDate = (dateString) => {
+    if (!dateString) return null;
+    if (typeof dateString !== 'string') return null;
+    const parts = dateString.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) return null;
+    // year, month (0-based), day
+    return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+  };
+
+  // -------------------------
+  // State
+  // -------------------------
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Query builder states with URL parameter defaults
   const [selectedTimeline, setSelectedTimeline] = useState('Last 14 Days');
   const [selectedFroms, setSelectedFroms] = useState([]);
   const [selectedTos, setSelectedTos] = useState([]);
   const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
   const [selectedOperators, setSelectedOperators] = useState([]);
-  const [customRange, setCustomRange] = useState(null);
+  const [customRange, setCustomRange] = useState(null); // expecting [startDate, endDate] as Date objects
   const [selectedDateField, setSelectedDateField] = useState('');
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+
+  // Table configuration states
   const [selectedColumn, setSelectedColumn] = useState(1); // Default to first column
-  const [selectedColumns, setSelectedColumns] = useState([sectionItems.columns[0]]); // Default to first column
+  const [selectedColumns, setSelectedColumns] = useState([sectionItems.columns[0]]);
   const [selectedRows, setSelectedRows] = useState([
     sectionItems.rows[0], // Total Routes
     sectionItems.rows[1]  // Mean Price Average
   ]);
   const [isComparing, setIsComparing] = useState(false);
 
-  // Extract unique values for dropdown suggestions
-  const getFieldSuggestions = (field) => {
-    if (!data || !Array.isArray(data)) return [];
-    const values = new Set();
-    data.forEach(item => {
-      if (item[field]) values.add(item[field]);
-    });
-    return Array.from(values).sort();
-  };
+  // -------------------------
+  // URL update: uses local formatting
+  // -------------------------
+  const updateURL = useCallback(() => {
+    const params = new URLSearchParams();
 
-  // Parse date from string or Date object
-  const parseDate = (v) => {
-    if (!v) return null;
-    // Already a Date
-    if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
-    
-    // ISO string or timestamp
-    if (typeof v === 'string' || typeof v === 'number') {
-      const d = new Date(v);
-      return isNaN(d.getTime()) ? null : d;
+    if (selectedTimeline) params.set('timeline', selectedTimeline);
+    if (selectedFroms.length > 0) params.set('from', selectedFroms.join(','));
+    if (selectedTos.length > 0) params.set('to', selectedTos.join(','));
+    if (selectedTransportTypes.length > 0) params.set('transport', selectedTransportTypes.join(','));
+    if (selectedOperators.length > 0) params.set('operator', selectedOperators.join(','));
+
+    // Use local date formatting (YYYY-MM-DD) instead of toISOString()
+    if (Array.isArray(customRange) && customRange.length === 2) {
+      const [startDate, endDate] = customRange;
+      if (startDate instanceof Date && !isNaN(startDate.getTime())) {
+        params.set('startDate', formatDateLocal(startDate));
+      }
+      if (endDate instanceof Date && !isNaN(endDate.getTime())) {
+        params.set('endDate', formatDateLocal(endDate));
+      }
     }
-    
-    return null;
-  };
-  
+
+    if (selectedDateField) params.set('dateField', selectedDateField);
+
+    // Sidebar selections
+    if (selectedColumn) params.set('column', selectedColumn);
+    if (selectedColumns.length > 0) {
+      params.set('columns', selectedColumns.map(col => col.id).join(','));
+    }
+    if (selectedRows.length > 0) {
+      params.set('rows', selectedRows.map(row => row.id).join(','));
+    }
+
+    navigate(`?${params.toString()}`, { replace: true });
+  }, [
+    selectedTimeline,
+    selectedFroms,
+    selectedTos,
+    selectedTransportTypes,
+    selectedOperators,
+    customRange,
+    selectedDateField,
+    selectedColumn,
+    selectedColumns,
+    selectedRows,
+    navigate,
+    formatDateLocal // stable here (function identity same across renders)
+  ]);
+
+  // -------------------------
+  // Initialize state from URL parameters
+  // -------------------------
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    let hasFilters = false;
+
+    if (params.has('timeline')) {
+      setSelectedTimeline(params.get('timeline'));
+      hasFilters = true;
+    }
+    if (params.has('from') && params.get('from')) {
+      setSelectedFroms(params.get('from').split(','));
+      hasFilters = true;
+    }
+    if (params.has('to') && params.get('to')) {
+      setSelectedTos(params.get('to').split(','));
+      hasFilters = true;
+    }
+    if (params.has('transport') && params.get('transport')) {
+      setSelectedTransportTypes(params.get('transport').split(','));
+      hasFilters = true;
+    }
+    if (params.has('operator') && params.get('operator')) {
+      setSelectedOperators(params.get('operator').split(','));
+      hasFilters = true;
+    }
+    if (params.has('startDate') && params.has('endDate')) {
+      const s = safeParseDate(params.get('startDate'));
+      const e = safeParseDate(params.get('endDate'));
+      if (s && e) {
+        setCustomRange([s, e]);
+        hasFilters = true;
+      }
+    }
+    if (params.has('dateField')) {
+      setSelectedDateField(params.get('dateField'));
+      hasFilters = true;
+    }
+
+    // Sidebar selections from URL
+    if (params.has('column')) {
+      const columnId = parseInt(params.get('column'), 10);
+      const column = sectionItems.columns.find(item => item.id === columnId);
+      if (column) setSelectedColumn(columnId);
+    }
+
+    if (params.has('columns')) {
+      const columnIds = params.get('columns').split(',').map(id => parseInt(id, 10));
+      const columns = columnIds
+        .map(id => sectionItems.columns.find(col => col.id === id))
+        .filter(Boolean);
+      if (columns.length > 0) setSelectedColumns(columns);
+    }
+
+    if (params.has('rows')) {
+      const rowIds = params.get('rows').split(',').map(id => parseInt(id, 10));
+      const rows = rowIds
+        .map(id => sectionItems.rows.find(row => row.id === id))
+        .filter(Boolean);
+      if (rows.length > 0) setSelectedRows(rows);
+    }
+
+    if (hasFilters) {
+      const timer = setTimeout(() => {
+        setIsComparing(true);
+      }, 100);
+
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search]);
+
+  // Update URL whenever relevant state changes
+  useEffect(() => {
+    // Only update URL if we're not in the middle of initializing from URL params
+    if (location.search) {
+      const params = new URLSearchParams(location.search);
+      const currentParams = new URLSearchParams();
+      
+      // Rebuild the current URL state to compare
+      if (selectedTimeline) currentParams.set('timeline', selectedTimeline);
+      if (selectedFroms.length) currentParams.set('from', selectedFroms.join(','));
+      if (selectedTos.length) currentParams.set('to', selectedTos.join(','));
+      if (selectedTransportTypes.length) currentParams.set('transport', selectedTransportTypes.join(','));
+      if (selectedOperators.length) currentParams.set('operator', selectedOperators.join(','));
+      if (selectedDateField) currentParams.set('dateField', selectedDateField);
+      
+      // Only update if the URL would actually change to prevent loops
+      if (params.toString() !== currentParams.toString()) {
+        updateURL();
+      }
+    } else {
+      updateURL();
+    }
+  }, [
+    selectedTimeline,
+    selectedFroms,
+    selectedTos,
+    selectedTransportTypes,
+    selectedOperators,
+    customRange,
+    selectedDateField,
+    selectedColumn,
+    selectedColumns,
+    selectedRows,
+    updateURL,
+    location.search
+  ]);
+
+  // -------------------------
+  // Date utilities used in filtering
+  // -------------------------
   // Get date range based on selected timeline
   const getDateRange = () => {
     const now = new Date();
-    
-    const ranges = {
-      'Today': () => { 
-        const start = new Date(); 
-        start.setHours(0,0,0,0); 
-        const end = new Date(); 
-        end.setHours(23,59,59,999); 
-        return { start, end }; 
+
+    const presets = {
+      'Today': () => {
+        const start = new Date();
+        start.setHours(0,0,0,0);
+        const end = new Date();
+        end.setHours(23,59,59,999);
+        return { start, end };
       },
-      'Yesterday': () => { 
+      'Yesterday': () => {
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         const start = new Date(yesterday);
@@ -95,113 +261,140 @@ const ComparePage = () => {
         end.setHours(23,59,59,999);
         return { start, end };
       },
-     'Next 7 Days': () => { 
-        const start = new Date();
-        start.setHours(0, 0, 0, 0); 
+      'Last 7 Days': () => {
         const end = new Date();
-        end.setDate(end.getDate() + 6); 
-        end.setHours(23, 59, 59, 999);
-        return { start, end }; 
-},
-
-      'Next 14 Days': () => { 
         const start = new Date();
-        start.setHours(0, 0, 0, 0); 
-        const end = new Date();
-        end.setDate(end.getDate() + 13); 
-        end.setHours(23, 59, 59, 999);
-        return { start, end }; 
-},
-      'This Month': () => { 
-        const now = new Date(); 
-        const start = new Date(now.getFullYear(), now.getMonth(), 1); 
-        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999); 
-        return { start, end }; 
+        start.setDate(end.getDate() - 6);
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+        return { start, end };
       },
-      'This Year': () => { 
-        const now = new Date(); 
-        const start = new Date(now.getFullYear(), 0, 1); 
-        const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999); 
-        return { start, end }; 
+      'Last 14 Days': () => {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - 13);
+        start.setHours(0,0,0,0);
+        end.setHours(23,59,59,999);
+        return { start, end };
+      },
+      'This Month': () => {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+        return { start, end };
+      },
+      'This Year': () => {
+        const now = new Date();
+        const start = new Date(now.getFullYear(), 0, 1);
+        const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+        return { start, end };
+      },
+      'Next 7 Days': () => {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date();
+        end.setDate(end.getDate() + 6);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      },
+      'Next 14 Days': () => {
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date();
+        end.setDate(end.getDate() + 13);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
       }
     };
 
-    // Handle custom range
     if (selectedTimeline === 'Custom') {
-      if (Array.isArray(customRange) && customRange.length === 2) {
-        const [start, end] = customRange;
-        return { 
-          start: parseDate(start),
-          end: parseDate(end) 
-        };
-      } else if (customRange) {
-        // Single date selected
-        const start = parseDate(customRange);
-        if (start) {
-          const end = new Date(start);
+      if (Array.isArray(customRange)) {
+        if (customRange[0] && customRange[1]) {
+          const start = new Date(customRange[0]);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(customRange[1]);
+          end.setHours(23, 59, 59, 999);
+          return { start, end };
+        } else if (customRange[0]) {
+          const start = new Date(customRange[0]);
+          start.setHours(0, 0, 0, 0);
+          const end = new Date(customRange[0]);
           end.setHours(23, 59, 59, 999);
           return { start, end };
         }
+      } else if (customRange instanceof Date) {
+        const start = new Date(customRange);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(customRange);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
       }
       return { start: null, end: null };
     }
 
-    // Handle preset ranges
-    const rangeFn = ranges[selectedTimeline];
+    const rangeFn = presets[selectedTimeline];
     return rangeFn ? rangeFn() : { start: null, end: null };
   };
 
-  // Filter data based on selected date range
-  const filterDataByDateRange = (data) => {
-    if (!data || !Array.isArray(data)) return [];
-    
+  // Filter data by date range (expects item['Date'] to be 'YYYY-MM-DD' string or similar)
+  const filterDataByDateRange = (dataList) => {
+    if (!dataList || !Array.isArray(dataList)) return [];
+
     const { start, end } = getDateRange();
-    if (!start || !end) return data;
-    
-    return data.filter(item => {
-      const itemDate = parseDate(item['Date']);
+    if (!start || !end) return dataList;
+
+    return dataList.filter(item => {
+      if (!item || !item['Date']) return false;
+
+      // item['Date'] in transformed data is stored as 'YYYY-MM-DD' string
+      const itemDate = safeParseDate(item['Date']);
       if (!itemDate) return false;
-      
-      return itemDate >= start && itemDate <= end;
+
+      const itemTime = itemDate.getTime();
+      const startTime = start.getTime();
+      const endTime = end.getTime();
+
+      return itemTime >= startTime && itemTime <= endTime;
     });
   };
-  
-  // Get filtered data based on all filters
+
+  // -------------------------
+  // Filter logic across other fields
+  // -------------------------
   const getFilteredData = useCallback(() => {
     if (!data || !Array.isArray(data)) return [];
-    
-    // Apply date filter
+
     let filtered = filterDataByDateRange(data);
-    
-    // Apply transport type filter
+
+    // Transport type filter
     if (selectedTransportTypes.length > 0) {
-      filtered = filtered.filter(item => 
-        selectedTransportTypes.some(type => 
+      filtered = filtered.filter(item =>
+        selectedTransportTypes.some(type =>
           item['Transport Type']?.toLowerCase().includes(type.toLowerCase())
         )
       );
     }
-    
-    // Apply from/to filters
+
+    // From/To filters
     if (selectedFroms.length > 0) {
-      filtered = filtered.filter(item => 
+      filtered = filtered.filter(item =>
         selectedFroms.includes(item['From'])
       );
     }
-    
     if (selectedTos.length > 0) {
-      filtered = filtered.filter(item => 
+      filtered = filtered.filter(item =>
         selectedTos.includes(item['To'])
       );
     }
-    
+
     return filtered;
   }, [data, selectedTransportTypes, selectedFroms, selectedTos, selectedTimeline, customRange]);
 
-  // Use the same API configuration as in App.jsx
+  // -------------------------
+  // Fetch data and normalize travel_date to local YYYY-MM-DD
+  // -------------------------
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-  
-  // Fetch data when component mounts
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -212,11 +405,25 @@ const ComparePage = () => {
         const apiData = await response.json();
         const transformedData = apiData.map(item => {
           const formatDuration = (minutes) => {
-            if (!minutes) return null;
+            if (minutes === undefined || minutes === null) return null;
             const hours = Math.floor(minutes / 60);
             const mins = minutes % 60;
             return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
           };
+
+          // Normalize travel_date into local YYYY-MM-DD
+          let travelDateLocal = '';
+          if (item.travel_date) {
+            // Try to parse travel_date as Date; if that fails, leave as today's date string
+            const parsed = new Date(item.travel_date);
+            if (!isNaN(parsed.getTime())) {
+              travelDateLocal = formatDateLocal(parsed);
+            } else {
+              travelDateLocal = formatDateLocal(new Date());
+            }
+          } else {
+            travelDateLocal = formatDateLocal(new Date());
+          }
 
           return {
             'Route URL': item.route_url || '',
@@ -225,24 +432,23 @@ const ComparePage = () => {
             'From': item.origin || 'Unknown',
             'To': item.destination || 'Unknown',
             'Duration': formatDuration(item.duration_min) || 'N/A',
-            'Price': `₹${parseFloat(item.price_thb).toFixed(2)}` || '₹0.00',
+            'Price': item.price_thb ? `₹${parseFloat(item.price_thb).toFixed(2)}` : '₹0.00',
             'Transport Type': item.transport_type || 'N/A',
             'Operator': item.operator_name || item.provider || 'N/A',
-            'Departure Time': item.departure_time ? 
-              new Date(item.departure_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--',
-            'Arrival Time': item.arrival_time ? 
-              new Date(item.arrival_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--',
-            'Date': item.travel_date ? 
-              new Date(item.travel_date).toISOString().split('T')[0] : 
-              new Date().toISOString().split('T')[0],
+            'Departure Time': item.departure_time ?
+              new Date(item.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--',
+            'Arrival Time': item.arrival_time ?
+              new Date(item.arrival_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--',
+            // store Date as YYYY-MM-DD local string (safe for our parsing later)
+            'Date': travelDateLocal,
             'source': item.provider || '12go'
           };
         });
 
         setData(transformedData);
         setError(null);
-      } catch (error) {
-        console.error('Error fetching data:', error);
+      } catch (err) {
+        console.error('Error fetching data:', err);
         setError('Failed to load data. Please ensure the backend server is running.');
         setData([]);
       } finally {
@@ -251,8 +457,11 @@ const ComparePage = () => {
     };
 
     fetchData();
-  }, []);
+  }, [API_BASE_URL]);
 
+  // -------------------------
+  // UI helpers
+  // -------------------------
   const dateFieldOptions = [
     { label: 'Departure Time', value: 'Departure Time' },
     { label: 'Arrival Time', value: 'Arrival Time' },
@@ -267,10 +476,8 @@ const ComparePage = () => {
     setIsComparing(true);
   }, [selectedRows]);
 
-  // Memoize the section items to prevent unnecessary re-renders
   const memoizedSectionItems = useMemo(() => sectionItems, []);
 
-  // Update selected columns when selectedColumn changes
   useEffect(() => {
     const column = memoizedSectionItems.columns.find(col => col.id === selectedColumn);
     if (column) {
@@ -278,49 +485,54 @@ const ComparePage = () => {
     }
   }, [selectedColumn, memoizedSectionItems.columns]);
 
-  // Handle row selection changes from sidebar
   const handleRowSelectionChange = useCallback((rowIds) => {
     const selected = memoizedSectionItems.rows.filter(row => rowIds.includes(row.id));
     setSelectedRows(selected);
   }, [memoizedSectionItems.rows]);
 
-  // Handle column selection changes from sidebar
   const handleColumnChange = useCallback((columnId) => {
     setSelectedColumn(columnId);
   }, []);
-  
-  // Handle date field selection
+
   const handleDateFieldChange = (e) => {
     setSelectedDateField(e.value);
   };
-  
-  // Memoize the filtered data to prevent unnecessary recalculations
+
+  const getFieldSuggestions = (field) => {
+    if (!data || !Array.isArray(data)) return [];
+    const values = new Set();
+    data.forEach(item => {
+      if (item[field]) values.add(item[field]);
+    });
+    return Array.from(values).sort();
+  };
+
   const filteredData = useMemo(() => {
     return getFilteredData();
   }, [getFilteredData]);
 
+  // -------------------------
+  // Render
+  // -------------------------
   return (
     <div className="flex flex-col h-screen">
-      {/* Main Content with Sidebar and Query Builder */}
       <div className="flex flex-1 overflow-hidden">
-          <Sidebar 
-            onRowSelectionChange={handleRowSelectionChange}
-            onColumnChange={handleColumnChange}
-            selectedColumn={selectedColumn}
-            sectionItems={memoizedSectionItems}
-          />
-        
+        <Sidebar
+          onRowSelectionChange={handleRowSelectionChange}
+          onColumnChange={handleColumnChange}
+          selectedColumn={selectedColumn}
+          sectionItems={memoizedSectionItems}
+        />
+
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Query Builder Section */}
           <div className="bg-white p-3 shadow-md">
             <div className="dropdownoption flex flex-row gap-2 flex-wrap items-center">
-              {/* Timeline */}
               <div className="timeline min-w-[180px]">
                 <Dropdown
                   value={selectedTimeline}
                   onChange={(e) => setSelectedTimeline(e.value)}
                   options={[
-                    'Today', 'Yesterday', 'Next 7 Days', 'Next 14 Days','This Month', 'This Year', 'Custom'
+                    'Today', 'Yesterday', 'Next 7 Days', 'Next 14 Days', 'This Month', 'This Year', 'Custom'
                   ].map(v => ({ label: v, value: v }))}
                   placeholder="Timeframe"
                   className="w-full text-sm"
@@ -338,11 +550,10 @@ const ComparePage = () => {
                 )}
               </div>
 
-              {/* Date Field */}
               <div className="date-field min-w-[160px]">
                 <Dropdown
                   value={selectedDateField}
-                  onChange={(e) => setSelectedDateField(e.value)}
+                  onChange={handleDateFieldChange}
                   options={dateFieldOptions}
                   optionLabel="label"
                   optionValue="value"
@@ -352,7 +563,6 @@ const ComparePage = () => {
                 />
               </div>
 
-              {/* From */}
               <div className="from min-w-[150px]">
                 <MultiSelect
                   value={selectedFroms}
@@ -368,7 +578,6 @@ const ComparePage = () => {
                 />
               </div>
 
-              {/* To */}
               <div className="to min-w-[150px]">
                 <MultiSelect
                   value={selectedTos}
@@ -384,7 +593,6 @@ const ComparePage = () => {
                 />
               </div>
 
-              {/* Transport Type */}
               <div className="transport-type min-w-[140px]">
                 <MultiSelect
                   value={selectedTransportTypes}
@@ -400,7 +608,6 @@ const ComparePage = () => {
                 />
               </div>
 
-              {/* Operator */}
               <div className="operator min-w-[140px]">
                 <MultiSelect
                   value={selectedOperators}
@@ -416,67 +623,65 @@ const ComparePage = () => {
                 />
               </div>
 
-              {/* Submit */}
-              <div className="submit" style={{marginTop:'0'}}>
-                <Button 
-                  label="Apply" 
-                  icon="pi pi-check" 
-                  onClick={runQuery} 
+              <div className="submit" style={{ marginTop: '0' }}>
+                <Button
+                  label="Apply"
+                  icon="pi pi-check"
+                  onClick={runQuery}
                   style={{
-                    backgroundColor:'#007bff',
-                    color:'white',
-                    borderRadius:'5px',
-                    padding:'8px 12px',
-                    fontSize:'0.85rem'
-                  }} 
+                    backgroundColor: '#007bff',
+                    color: 'white',
+                    borderRadius: '5px',
+                    padding: '8px 12px',
+                    fontSize: '0.85rem'
+                  }}
                 />
               </div>
             </div>
           </div>
-          
-          {/* Main Content Area */}
+
           <div className="flex-1 p-4 overflow-auto">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <i className="pi pi-spin pi-spinner text-2xl text-blue-500"></i>
-                  <span className="ml-2">Loading data</span>
+            {loading ? (
+              <div className="flex items-center justify-center h-full">
+                <i className="pi pi-spin pi-spinner text-2xl text-blue-500"></i>
+                <span className="ml-2">Loading data</span>
+              </div>
+            ) : error ? (
+              <div className="bg-red-50 p-4 rounded-md text-red-700">
+                <div className="flex items-center">
+                  <i className="pi pi-exclamation-triangle mr-2"></i>
+                  <span>{error}</span>
                 </div>
-              ) : error ? (
-                <div className="bg-red-50 p-4 rounded-md text-red-700">
-                  <div className="flex items-center">
-                    <i className="pi pi-exclamation-triangle mr-2"></i>
-                    <span>{error}</span>
-                  </div>
-                  <div className="mt-2 text-sm">
-                    Make sure your backend server is running
-                  </div>
+                <div className="mt-2 text-sm">
+                  Make sure your backend server is running
                 </div>
-              ) : isComparing ? (
-                <div className="h-full flex flex-col">
-                  <div className="mb-4">
-                    <Button 
-                      icon="pi pi-arrow-left" 
-                      label="Back to Filters" 
-                      className="p-button-text p-button-sm" 
-                      onClick={() => setIsComparing(false)} 
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <CompareTable 
-                      data={filteredData}
-                      columns={selectedColumns}
-                      rows={selectedRows}
-                      selectedFroms={selectedFroms}
-                      selectedTos={selectedTos}
-                      selectedTransportTypes={selectedTransportTypes}
-                    />
-                  </div>
+              </div>
+            ) : isComparing ? (
+              <div className="h-full flex flex-col">
+                <div className="mb-4">
+                  <Button
+                    icon="pi pi-arrow-left"
+                    label="Back to Filters"
+                    className="p-button-text p-button-sm"
+                    onClick={() => setIsComparing(false)}
+                  />
                 </div>
-              ) : (
-                <div className="text-gray-500 text-center py-8">
-                  Select filters and click "Apply" to view comparison results
+                <div className="flex-1">
+                  <CompareTable
+                    data={filteredData}
+                    columns={selectedColumns}
+                    rows={selectedRows}
+                    selectedFroms={selectedFroms}
+                    selectedTos={selectedTos}
+                    selectedTransportTypes={selectedTransportTypes}
+                  />
                 </div>
-              )}
+              </div>
+            ) : (
+              <div className="text-gray-500 text-center py-8">
+                Select filters and click "Apply" to view comparison results
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -4,14 +4,6 @@ import { Column } from 'primereact/column';
 import { Card } from 'primereact/card';
 
 const CompareTable = ({ data, columns, rows, selectedFroms = [], selectedTos = [], selectedTransportTypes = [] }) => {
-  console.log('CompareTable props:', {
-    dataLength: data?.length,
-    columns,
-    rows,
-    selectedFroms,
-    selectedTos,
-    selectedTransportTypes
-  });
   if (!data || !data.length || !columns?.length || !rows?.length) {
     return (
       <div className="p-4 text-center text-gray-500">
@@ -47,9 +39,7 @@ const CompareTable = ({ data, columns, rows, selectedFroms = [], selectedTos = [
 
   // Process data to create comparison data structure
   const processData = () => {
-    console.log('Processing data with filters:', { selectedFroms, selectedTos, selectedTransportTypes });
-    // First, filter the data based on selected 'from', 'to', and transport type filters
-    console.log('Total data items before filtering:', data.length);
+    // Filter the data based on selected 'from', 'to', and transport type filters
     const filteredData = data.filter(item => {
       const matchesFrom = !selectedFroms.length || selectedFroms.includes(item['From']);
       const matchesTo = !selectedTos.length || selectedTos.includes(item['To']);
@@ -57,16 +47,7 @@ const CompareTable = ({ data, columns, rows, selectedFroms = [], selectedTos = [
                                  selectedTransportTypes.some(type => 
                                    item['Transport Type']?.toLowerCase().includes(type.toLowerCase())
                                  );
-      const matches = matchesFrom && matchesTo && matchesTransportType;
-      if (matches) {
-        console.log('Matching item:', { 
-          from: item['From'], 
-          to: item['To'], 
-          type: item['Transport Type'],
-          provider: item['source']
-        });
-      }
-      return matches;
+      return matchesFrom && matchesTo && matchesTransportType;
     });
 
     // Group data by provider
@@ -158,7 +139,6 @@ const CompareTable = ({ data, columns, rows, selectedFroms = [], selectedTos = [
   };
 
   const providerMetrics = processData();
-  console.log('Provider metrics:', providerMetrics);
   
   // Format a price value with currency symbol
   const formatPrice = (value) => {
