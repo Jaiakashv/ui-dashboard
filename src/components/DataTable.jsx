@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { InputText } from 'primereact/inputtext';
@@ -29,6 +29,8 @@ const DataTableComponent = ({ data }) => {
 
   const [globalFilterValue, setGlobalFilterValue] = useState('');
   const [loading, setLoading] = useState(true);
+  const [debouncedFilter, setDebouncedFilter] = useState('');
+  const timeoutRef = useRef(null);
 
   const operators = useMemo(() =>
     [...new Set(data.map(item => item['Operator']).filter(Boolean))],
@@ -47,12 +49,33 @@ const DataTableComponent = ({ data }) => {
     return () => clearTimeout(timer);
   }, []);
 
+  // Debounce filter updates
+  useEffect(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    timeoutRef.current = setTimeout(() => {
+      setDebouncedFilter(globalFilterValue);
+    }, 300); // 300ms delay
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [globalFilterValue]);
+
+  // Apply debounced filter
+  useEffect(() => {
+    setFilters(prev => ({
+      ...prev,
+      global: { value: debouncedFilter, matchMode: FilterMatchMode.CONTAINS }
+    }));
+  }, [debouncedFilter]);
+
   const onGlobalFilterChange = (e) => {
     const value = e.target.value;
-    setFilters((prev) => ({
-      ...prev,
-      global: { value, matchMode: FilterMatchMode.CONTAINS }
-    }));
     setGlobalFilterValue(value);
   };
 
@@ -67,6 +90,11 @@ const DataTableComponent = ({ data }) => {
       source: { value: null, matchMode: FilterMatchMode.EQUALS }
     });
     setGlobalFilterValue('');
+    setDebouncedFilter('');
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     toast.current.show({ severity: 'info', summary: 'Filters Cleared', life: 2000 });
   };
 
