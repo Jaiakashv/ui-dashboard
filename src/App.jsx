@@ -104,6 +104,21 @@ function AppContent() {
     }
   };
 
+  // Handle URL parameters on component mount and when location changes
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const view = searchParams.get('view');
+    const provider = searchParams.get('provider');
+
+    if (view === 'data' && provider) {
+      setActiveView('data');
+      setActiveProvider(provider);
+    } else if (view) {
+      setActiveView('virtualize');
+      setVirtualizeView(view);
+    }
+  }, [location.search]);
+
   useEffect(() => {
     loadData();
   }, [activeProvider]);
