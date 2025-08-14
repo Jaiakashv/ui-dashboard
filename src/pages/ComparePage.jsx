@@ -85,10 +85,8 @@ const ComparePage = () => {
 
   const [selectedColumn, setSelectedColumn] = useState(1); 
   const [selectedColumns, setSelectedColumns] = useState([sectionItems.columns[0]]);
-  const [selectedRows, setSelectedRows] = useState([
-    sectionItems.rows[0], 
-    sectionItems.rows[1] 
-  ]);
+  // Initialize with all rows selected by default
+  const [selectedRows, setSelectedRows] = useState(() => [...sectionItems.rows]);
   const [isComparing, setIsComparing] = useState(false);
 
   const updateURL = useCallback(() => {
@@ -488,6 +486,11 @@ const ComparePage = () => {
     setSelectedRows(selected);
   }, [memoizedSectionItems.rows]);
 
+  // Ensure all rows are selected when component mounts
+  useEffect(() => {
+    setSelectedRows([...memoizedSectionItems.rows]);
+  }, [memoizedSectionItems.rows]);
+
   const handleColumnChange = useCallback((columnId) => {
     setSelectedColumn(columnId);
   }, []);
@@ -639,7 +642,7 @@ const ComparePage = () => {
               </div>
 
               <div className="submit" style={{ marginTop: '0' }}>
-                <Button
+                {/* <Button
                   label="Apply"
                   icon="pi pi-check"
                   onClick={runQuery}
@@ -650,7 +653,7 @@ const ComparePage = () => {
                     padding: '8px 12px',
                     fontSize: '0.85rem'
                   }}
-                />
+                /> */}
               </div>
             </div>
           </div>
@@ -673,14 +676,14 @@ const ComparePage = () => {
               </div>
             ) : isComparing ? (
               <div className="h-full flex flex-col">
-                <div className="mb-4">
+                {/* <div className="mb-4">
                   <Button
                     icon="pi pi-arrow-left"
                     label="Back to Filters"
                     className="p-button-text p-button-sm"
                     onClick={() => setIsComparing(false)}
                   />
-                </div>
+                </div> */}
                 <div className="flex-1">
                   <CompareTable
                     data={filteredData}

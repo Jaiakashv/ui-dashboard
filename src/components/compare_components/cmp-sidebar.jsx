@@ -8,8 +8,28 @@ const Sidebar = ({ onRowSelectionChange, onColumnChange, selectedColumn, section
     rows: true
   });
   
-  const [selectedRows, setSelectedRows] = useState(new Set());
+  // Initialize with all row IDs selected by default
+  const [selectedRows, setSelectedRows] = useState(
+    () => new Set(sectionItems.rows.map(row => row.id))
+  );
   const [selectedCol, setSelectedCol] = useState(selectedColumn || 1); // Default to first column
+  
+  // Update selectedRows when sectionItems.rows changes
+  useEffect(() => {
+    const allRowIds = new Set(sectionItems.rows.map(row => row.id));
+    setSelectedRows(prev => {
+      // Keep only the row IDs that still exist in sectionItems.rows
+      const updated = new Set();
+      prev.forEach(id => {
+        if (allRowIds.has(id)) updated.add(id);
+      });
+      // If no rows were preserved, select all rows
+      if (updated.size === 0) {
+        return allRowIds;
+      }
+      return updated;
+    });
+  }, [sectionItems.rows]);
 
   const toggleSection = (section) => {
     setExpandedSections(prev => ({
@@ -36,6 +56,13 @@ const Sidebar = ({ onRowSelectionChange, onColumnChange, selectedColumn, section
       onRowSelectionChange(Array.from(selectedRows));
     }
   }, [selectedRows, onRowSelectionChange]);
+  
+  // Initial sync with parent when component mounts
+  useEffect(() => {
+    if (onRowSelectionChange && selectedRows.size > 0) {
+      onRowSelectionChange(Array.from(selectedRows));
+    }
+  }, []); // Empty dependency array to run only on mount
 
   // Handle column selection change
   const handleColumnChange = (columnId) => {
@@ -48,7 +75,7 @@ const Sidebar = ({ onRowSelectionChange, onColumnChange, selectedColumn, section
   // Use the sectionItems prop passed from parent
 
   return (
-    <div className="bg-[#1e2836] text-white h-screen w-64 p-4 space-y-4 overflow-y-auto">
+    <div className="bg-[#1e2836] text-white h-screen w-full p-4 space-y-4 overflow-y-auto">
       <h1 className="text-xl font-bold mb-4 px-2">Comparison</h1>
       
       {/* Columns Section */}
