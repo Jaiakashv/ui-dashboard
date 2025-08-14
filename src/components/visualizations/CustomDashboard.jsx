@@ -12,7 +12,7 @@ const CustomDashboard = ({ data }) => {
     <div className="custom-dashboard">
       <div className="grid">
         
-        <div className="col-12">
+        <div className="col-12 mt-16">
           <QueryBuilder 
             data={data} 
             onRunQuery={handleQueryRun} 

@@ -1,6 +1,6 @@
 import { PrimeReactProvider } from 'primereact/api';
-import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
 import 'primereact/resources/themes/lara-light-indigo/theme.css';
 import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
@@ -31,6 +31,7 @@ function App() {
 
 function AppContent() {
   const location = useLocation();
+  const navigate = useNavigate();
   const isComparePage = location.pathname === '/compare';
   const [tableData, setTableData] = useState([]);
   const [combinedData, setCombinedData] = useState([]);
@@ -49,11 +50,16 @@ function AppContent() {
     if (window.innerWidth < 768) setSidebarVisible(false);
   };
 
-  const handleVirtualizeMenuClick = (viewId) => {
-    setActiveView('virtualize');
-    setVirtualizeView(viewId);
-    if (window.innerWidth < 768) setSidebarVisible(false);
-  };
+  const handleVirtualizeMenuClick = useCallback((viewId) => {
+    try {
+      setVirtualizeView(viewId);
+      setActiveView('virtualize');
+      navigate(`/?view=virtualize&tab=${viewId}`, { replace: true });
+      if (window.innerWidth < 768) setSidebarVisible(false);
+    } catch (error) {
+      console.error('Error handling virtualize menu click:', error);
+    }
+  }, [navigate]);
 
   const loadData = async () => {
     setLoading(true);
@@ -109,15 +115,27 @@ function AppContent() {
     const searchParams = new URLSearchParams(location.search);
     const view = searchParams.get('view');
     const provider = searchParams.get('provider');
+    const tab = searchParams.get('tab');
 
-    if (view === 'data' && provider) {
-      setActiveView('data');
-      setActiveProvider(provider);
-    } else if (view) {
-      setActiveView('virtualize');
-      setVirtualizeView(view);
+    try {
+      if (view === 'data' && provider) {
+        setActiveView('data');
+        setActiveProvider(provider);
+      } else if (view === 'virtualize') {
+        setActiveView('virtualize');
+        if (tab && ['popular-routes', 'price-graph', 'booking-horizon', 'cheapest-carrier', 'custom-dashboard', 'query-builder'].includes(tab)) {
+          setVirtualizeView(tab);
+        }
+      } else if (location.pathname === '/') {
+        // Default to popular routes if no view is specified
+        navigate('/?view=virtualize&tab=popular-routes', { replace: true });
+      }
+    } catch (error) {
+      console.error('Error handling URL parameters:', error);
+      // Fallback to default view on error
+      navigate('/?view=virtualize&tab=popular-routes', { replace: true });
     }
-  }, [location.search]);
+  }, [location.search, location.pathname, navigate]);
 
   useEffect(() => {
     loadData();

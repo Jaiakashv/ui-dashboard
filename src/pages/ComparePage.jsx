@@ -4,7 +4,8 @@ import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
 import { MultiSelect } from 'primereact/multiselect';
 import { Calendar } from 'primereact/calendar';
-import Sidebar from '../components/compare_components/cmp-sidebar';
+import Sidebar from '../components/Sidebar';
+import CmpSidebar from '../components/compare_components/cmp-sidebar';
 import CompareTable from '../components/compare_components/CompareTable';
 
 // Define section items outside the component to avoid recreation
@@ -30,56 +31,66 @@ const sectionItems = {
 const ComparePage = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const view = searchParams.get('view') || '';
+  const provider = searchParams.get('provider') || '';
 
-  // -------------------------
-  // Helpers: date formatting / parsing (local timezone safe)
-  // -------------------------
+  const handleViewSelect = (viewType) => {
+    if (viewType === 'data' && provider) {
+      navigate(`/?view=data&provider=${provider}`);
+    } else if (viewType === 'virtualize') {
+      navigate(`/?view=virtualize`);
+    }
+  };
+
+  const handleVirtualizeViewSelect = (viewId) => {
+    if (viewId === 'compare') {
+      navigate('/compare');
+    } else {
+      navigate(`/?view=virtualize&tab=${viewId}`);
+    }
+  };
+
+  const handleProviderSelect = (provider) => {
+    navigate(`/?view=data&provider=${provider}`);
+  };
+
   const formatDateLocal = useCallback((date) => {
     if (!(date instanceof Date) || isNaN(date.getTime())) return '';
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
-  }, []); // No dependencies needed as it's a pure function
+  }, []); 
 
-  // Parse 'YYYY-MM-DD' into a local Date at midnight (avoids timezone shift)
   const safeParseDate = (dateString) => {
     if (!dateString) return null;
     if (typeof dateString !== 'string') return null;
     const parts = dateString.split('-').map(Number);
     if (parts.length !== 3 || parts.some(isNaN)) return null;
-    // year, month (0-based), day
     return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
   };
 
-  // -------------------------
-  // State
-  // -------------------------
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Query builder states with URL parameter defaults
   const [selectedTimeline, setSelectedTimeline] = useState('Last 14 Days');
   const [selectedFroms, setSelectedFroms] = useState([]);
   const [selectedTos, setSelectedTos] = useState([]);
   const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
   const [selectedOperators, setSelectedOperators] = useState([]);
-  const [customRange, setCustomRange] = useState(null); // expecting [startDate, endDate] as Date objects
+  const [customRange, setCustomRange] = useState(null);
   const [selectedDateField, setSelectedDateField] = useState('');
 
-  // Table configuration states
-  const [selectedColumn, setSelectedColumn] = useState(1); // Default to first column
+  const [selectedColumn, setSelectedColumn] = useState(1); 
   const [selectedColumns, setSelectedColumns] = useState([sectionItems.columns[0]]);
   const [selectedRows, setSelectedRows] = useState([
-    sectionItems.rows[0], // Total Routes
-    sectionItems.rows[1]  // Mean Price Average
+    sectionItems.rows[0], 
+    sectionItems.rows[1] 
   ]);
   const [isComparing, setIsComparing] = useState(false);
 
-  // -------------------------
-  // URL update: uses local formatting
-  // -------------------------
   const updateURL = useCallback(() => {
     const params = new URLSearchParams();
 
@@ -124,12 +135,9 @@ const ComparePage = () => {
     selectedColumns,
     selectedRows,
     navigate,
-    formatDateLocal // stable here (function identity same across renders)
+    formatDateLocal 
   ]);
 
-  // -------------------------
-  // Initialize state from URL parameters
-  // -------------------------
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     let hasFilters = false;
@@ -335,8 +343,6 @@ const ComparePage = () => {
     const rangeFn = presets[selectedTimeline];
     return rangeFn ? rangeFn() : { start: null, end: null };
   };
-
-  // Filter data by date range (expects item['Date'] to be 'YYYY-MM-DD' string or similar)
   const filterDataByDateRange = (dataList) => {
     if (!dataList || !Array.isArray(dataList)) return [];
 
@@ -345,8 +351,6 @@ const ComparePage = () => {
 
     return dataList.filter(item => {
       if (!item || !item['Date']) return false;
-
-      // item['Date'] in transformed data is stored as 'YYYY-MM-DD' string
       const itemDate = safeParseDate(item['Date']);
       if (!itemDate) return false;
 
@@ -358,9 +362,7 @@ const ComparePage = () => {
     });
   };
 
-  // -------------------------
-  // Filter logic across other fields
-  // -------------------------
+
   const getFilteredData = useCallback(() => {
     if (!data || !Array.isArray(data)) return [];
 
@@ -458,10 +460,6 @@ const ComparePage = () => {
 
     fetchData();
   }, [API_BASE_URL]);
-
-  // -------------------------
-  // UI helpers
-  // -------------------------
   const dateFieldOptions = [
     { label: 'Departure Time', value: 'Departure Time' },
     { label: 'Arrival Time', value: 'Arrival Time' },
@@ -511,21 +509,38 @@ const ComparePage = () => {
     return getFilteredData();
   }, [getFilteredData]);
 
-  // -------------------------
-  // Render
-  // -------------------------
   return (
-    <div className="flex flex-col h-screen">
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          onRowSelectionChange={handleRowSelectionChange}
-          onColumnChange={handleColumnChange}
-          selectedColumn={selectedColumn}
-          sectionItems={memoizedSectionItems}
+    <div className="compare-page bg-gray-50 min-h-screen flex">
+      {/* Main Navigation Sidebar */}
+      <div className="flex-shrink-0">
+        <Sidebar 
+          onProviderSelect={handleProviderSelect}
+          onViewSelect={handleViewSelect}
+          onVirtualizeViewSelect={handleVirtualizeViewSelect}
+          activeProvider={provider}
+          activeView={view}
+          virtualizeView={view === 'virtualize' ? searchParams.get('tab') || 'popular-routes' : ''}
         />
-
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="bg-white p-3 shadow-md">
+      </div>
+      
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top padding to account for fixed header */}
+        <div className="pt-16">
+          <div className="flex h-full">
+            {/* Comparison Sidebar */}
+            <div className="w-64 bg-white border-r border-gray-200 flex-shrink-0 overflow-y-auto">
+              <CmpSidebar
+                onRowSelectionChange={handleRowSelectionChange}
+                onColumnChange={handleColumnChange}
+                selectedColumn={selectedColumn}
+                sectionItems={memoizedSectionItems}
+              />
+            </div>
+            
+            {/* Main Content */}
+            <div className="flex-1 overflow-auto p-4">
+              <div className="bg-white p-3 shadow-md">
             <div className="dropdownoption flex flex-row gap-2 flex-wrap items-center">
               <div className="timeline min-w-[180px]">
                 <Dropdown
@@ -682,6 +697,8 @@ const ComparePage = () => {
                 Select filters and click "Apply" to view comparison results
               </div>
             )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

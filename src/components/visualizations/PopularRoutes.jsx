@@ -239,7 +239,7 @@ const PopularRoutes = ({ data }) => {
   };
 
   return (
-    <div className="bg-white p-4 md:p-6 rounded-lg shadow">
+    <div className="bg-white p-4 md:p-6 rounded-lg shadow mt-9">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
         <h3 className="text-base sm:text-lg font-semibold">Popular Routes</h3>
         <div className="flex gap-2">
