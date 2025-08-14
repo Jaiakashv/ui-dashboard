@@ -258,28 +258,12 @@ const ComparePage = () => {
         end.setHours(23,59,59,999);
         return { start, end };
       },
-      'Yesterday': () => {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const start = new Date(yesterday);
+      'Tomorrow': () => {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const start = new Date(tomorrow);
         start.setHours(0,0,0,0);
-        const end = new Date(yesterday);
-        end.setHours(23,59,59,999);
-        return { start, end };
-      },
-      'Last 7 Days': () => {
-        const end = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - 6);
-        start.setHours(0,0,0,0);
-        end.setHours(23,59,59,999);
-        return { start, end };
-      },
-      'Last 14 Days': () => {
-        const end = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - 13);
-        start.setHours(0,0,0,0);
+        const end = new Date(tomorrow);
         end.setHours(23,59,59,999);
         return { start, end };
       },
@@ -550,7 +534,7 @@ const ComparePage = () => {
                   value={selectedTimeline}
                   onChange={(e) => setSelectedTimeline(e.value)}
                   options={[
-                    'Today', 'Yesterday', 'Next 7 Days', 'Next 14 Days', 'This Month', 'This Year', 'Custom'
+                    'Today', 'Tomorrow', 'Next 7 Days', 'Next 14 Days', 'This Month', 'This Year', 'Custom'
                   ].map(v => ({ label: v, value: v }))}
                   placeholder="Timeframe"
                   className="w-full text-sm"
