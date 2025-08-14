@@ -379,69 +379,85 @@ const ComparePage = () => {
   // -------------------------
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch(`${API_BASE_URL}/api/trips/all`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/trips/all`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-        const apiData = await response.json();
-        const transformedData = apiData.map(item => {
-          const formatDuration = (minutes) => {
-            if (minutes === undefined || minutes === null) return null;
-            const hours = Math.floor(minutes / 60);
-            const mins = minutes % 60;
-            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-          };
+      const apiData = await response.json();
+      const transformedData = apiData.map(item => {
+        const formatDuration = (minutes) => {
+          if (minutes === undefined || minutes === null) return null;
+          const hours = Math.floor(minutes / 60);
+          const mins = minutes % 60;
+          return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+        };
 
-          // Normalize travel_date into local YYYY-MM-DD
-          let travelDateLocal = '';
-          if (item.travel_date) {
-            // Try to parse travel_date as Date; if that fails, leave as today's date string
-            const parsed = new Date(item.travel_date);
-            if (!isNaN(parsed.getTime())) {
-              travelDateLocal = formatDateLocal(parsed);
-            } else {
-              travelDateLocal = formatDateLocal(new Date());
-            }
+        // Normalize travel_date into local YYYY-MM-DD
+        let travelDateLocal = '';
+        if (item.travel_date) {
+          const parsed = new Date(item.travel_date);
+          if (!isNaN(parsed.getTime())) {
+            travelDateLocal = formatDateLocal(parsed);
           } else {
             travelDateLocal = formatDateLocal(new Date());
           }
+        } else {
+          travelDateLocal = formatDateLocal(new Date());
+        }
 
-          return {
-            'Route URL': item.route_url || '',
-            'Title': item.title || `${item.origin} → ${item.destination}`,
-            'From-To': `${item.origin} → ${item.destination}`,
-            'From': item.origin || 'Unknown',
-            'To': item.destination || 'Unknown',
-            'Duration': formatDuration(item.duration_min) || 'N/A',
-            'Price': item.price_thb ? `₹${parseFloat(item.price_thb).toFixed(2)}` : '₹0.00',
-            'Transport Type': item.transport_type || 'N/A',
-            'Operator': item.operator_name || item.provider || 'N/A',
-            'Departure Time': item.departure_time ?
-              new Date(item.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--',
-            'Arrival Time': item.arrival_time ?
-              new Date(item.arrival_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--',
-            // store Date as YYYY-MM-DD local string (safe for our parsing later)
-            'Date': travelDateLocal,
-            'source': item.provider || '12go'
-          };
-        });
+        return {
+          'Route URL': item.route_url || '',
+          'Title': item.title || `${item.origin} → ${item.destination}`,
+          'From-To': `${item.origin} → ${item.destination}`,
+          'From': item.origin || 'Unknown',
+          'To': item.destination || 'Unknown',
+          'Duration': formatDuration(item.duration_min) || 'N/A',
+          'Price': item.price_thb ? `₹${parseFloat(item.price_thb).toFixed(2)}` : '₹0.00',
+          'Transport Type': item.transport_type || 'N/A',
+          'Operator': item.operator_name || item.provider || 'N/A',
+          'Departure Time': item.departure_time ?
+            new Date(item.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--',
+          'Arrival Time': item.arrival_time ?
+            new Date(item.arrival_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--',
+          'Date': travelDateLocal,
+          'source': item.provider || '12go'
+        };
+      });
 
-        setData(transformedData);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching data:', err);
-        setError('Failed to load data. Please ensure the backend server is running.');
-        setData([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
+      setData(transformedData);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError('Failed to load data. Please ensure the backend server is running.');
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
   }, [API_BASE_URL]);
+
+  // Initial data fetch
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Clear all filters function
+  const clearAllFilters = useCallback(() => {
+    // Reset all filter states to default
+    setSelectedTimeline('Last 14 Days');
+    setSelectedFroms([]);
+    setSelectedTos([]);
+    setSelectedTransportTypes([]);
+    setSelectedOperators([]);
+    setCustomRange(null);
+    setSelectedDateField('');
+    
+    // Update URL parameters
+    const params = new URLSearchParams();
+    params.set('timeline', 'Last 14 Days');
+    window.history.pushState({}, '', `${window.location.pathname}?${params.toString()}`);
+  }, []);
   const dateFieldOptions = [
     { label: 'Departure Time', value: 'Departure Time' },
     { label: 'Arrival Time', value: 'Arrival Time' },
@@ -551,7 +567,7 @@ const ComparePage = () => {
                   />
                 )}
               </div>
-
+{/* 
               <div className="date-field min-w-[160px]">
                 <Dropdown
                   value={selectedDateField}
@@ -563,7 +579,7 @@ const ComparePage = () => {
                   className="w-full text-sm"
                   showClear
                 />
-              </div>
+              </div> */}
 
               <div className="from min-w-[150px]">
                 <MultiSelect
@@ -623,6 +639,14 @@ const ComparePage = () => {
                   filter
                   showSelectAll
                 />
+              </div>
+              <div className="clear-all">
+                <button
+                  onClick={clearAllFilters}
+                  className="px-4 py-2 bg-white border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-150"
+                >
+                  Clear All Filters
+                </button>
               </div>
 
               <div className="submit" style={{ marginTop: '0' }}>
