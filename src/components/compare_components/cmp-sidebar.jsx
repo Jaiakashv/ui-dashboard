@@ -81,14 +81,18 @@ const Sidebar = ({ onRowSelectionChange, onColumnChange, selectedColumn, section
       {/* Columns Section */}
       <div className="bg-[#2c3a4d] rounded-lg overflow-hidden">
         <button 
-          onClick={() => toggleSection('columns')}
+          onClick={() => toggleSection('columns')
+            
+          }
           className="w-full flex items-center justify-between p-3 hover:bg-[#3a4b61] transition-colors"
-        >
+         >
           <div className="flex items-center space-x-2">
             <Columns size={18} />
             <h2 className="text-base font-semibold">Columns</h2>
           </div>
-          {expandedSections.columns ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+          {expandedSections.columns ? <ChevronDown size={18} /> : <ChevronRight size={18} /> 
+          
+          }
         </button>
         
         {expandedSections.columns && (
@@ -96,13 +100,21 @@ const Sidebar = ({ onRowSelectionChange, onColumnChange, selectedColumn, section
             {sectionItems.columns.map(item => (
               <li 
                 key={item.id}
-                className="px-4 py-2 text-sm hover:bg-[#3a4b61] cursor-pointer transition-colors flex items-center"
-                onClick={() => handleColumnChange(item.id)}
+                className={`px-4 py-2 text-sm transition-colors flex items-center ${
+                  item.disabled 
+                    ? 'opacity-50' 
+                    : 'hover:bg-[#3a4b61] cursor-pointer'
+                }`}
+                onClick={() => !item.disabled && handleColumnChange(item.id)}
               >
-                <div className={`w-4 h-4 border rounded-full mr-2 flex-shrink-0 flex items-center justify-center ${selectedCol === item.id ? 'border-blue-400' : 'border-gray-400'}`}>
-                  {selectedCol === item.id && <div className="w-2 h-2 rounded-full bg-blue-400"></div>}
+                <div className={`w-4 h-4 border rounded-full mr-2 flex-shrink-0 flex items-center justify-center ${
+                  selectedCol === item.id && !item.disabled ? 'border-blue-400' : 'border-gray-400'
+                }`}>
+                  {selectedCol === item.id && !item.disabled && <div className="w-2 h-2 rounded-full bg-blue-400"></div>}
                 </div>
-                <span className={selectedCol === item.id ? 'text-blue-300' : 'text-gray-200'}>{item.name}</span>
+                <span className={selectedCol === item.id && !item.disabled ? 'text-blue-300' : 'text-gray-200'}>
+                  {item.name}
+                </span>
               </li>
             ))}
           </ul>

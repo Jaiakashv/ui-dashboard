@@ -12,8 +12,8 @@ import CompareTable from '../components/compare_components/CompareTable';
 const sectionItems = {
   columns: [
     { id: 1, name: 'Websites' },
-    { id: 2, name: 'Carriers' },
-    { id: 3, name: 'Transport Type' }
+    { id: 2, name: 'Carriers', disabled: true },
+    { id: 3, name: 'Transport Type', disabled: true }
   ],
   rows: [
     { id: 1, name: 'Total Routes' },
