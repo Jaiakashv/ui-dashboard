@@ -30,8 +30,7 @@ const formatTimeAgo = (date) => {
 };
 
 const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activeProvider, activeView, virtualizeView }) => {
-  const [dataDropdownOpen, setDataDropdownOpen] = useState(false);
-  const [visualizeDropdownOpen, setVisualizeDropdownOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState(null); // 'data', 'visualize', or null
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 768) {
@@ -61,9 +60,26 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
     { label: 'Compare', icon: 'pi pi-chart-line', id: 'compare', link: '/compare' },
   ];
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!event.target.closest('.dropdown-container')) {
+        setOpenDropdown(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleDropdown = (dropdownName) => {
+    setOpenDropdown(openDropdown === dropdownName ? null : dropdownName);
+  };
+
   const handleDataMenuClick = (provider) => {
     onViewSelect('data');
     onProviderSelect(provider);
+    setOpenDropdown(null);
 
     const searchParams = new URLSearchParams(window.location.search);
     searchParams.set('view', 'data');
@@ -75,9 +91,11 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   const handleVirtualizeMenuClick = (viewId) => {
     onViewSelect('virtualize');
     onVirtualizeViewSelect(viewId);
+    setOpenDropdown(null);
 
     const searchParams = new URLSearchParams(window.location.search);
-    searchParams.set('view', viewId);
+    searchParams.set('view', 'virtualize');
+    searchParams.set('tab', viewId);
     const newUrl = `${window.location.pathname}?${searchParams.toString()}`;
     window.history.pushState({}, '', newUrl);
   };
@@ -86,8 +104,8 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   const isVirtualizeSelected = activeView === 'virtualize';
 
   return (
-    <div className="w-full bg-[#1E2836] text-white shadow-lg fixed top-0 left-0 right-0 z-50 ">
-      <div className="container mx-auto px-4 ">
+    <div className="w-full bg-[#1E2836] text-white shadow-lg fixed top-0 left-0 right-0 z-50 dropdown-container">
+      <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <div className="flex-shrink-0">
@@ -99,8 +117,8 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
             {/* Data Dropdown */}
             <div className="relative">
               <button
-                onClick={() => setDataDropdownOpen(!dataDropdownOpen)}
-                className="flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#1E2836] focus:ring-blue-500"
+                onClick={() => toggleDropdown('data')}
+                className={`flex items-center px-4 py-2 text-sm font-medium rounded-md text-white ${openDropdown === 'data' ? 'bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#1E2836] focus:ring-blue-500`}
               >
                 <span>Data</span>
                 <svg className="ml-2 -mr-1 h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
@@ -108,7 +126,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
                 </svg>
               </button>
               
-              {dataDropdownOpen && (
+              {openDropdown === 'data' && (
                 <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
                   <div className="py-1">
                     {dataMenuItems.map((item) => (
@@ -117,7 +135,6 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
                         disabled={item.disabled ?? false}
                         onClick={() => {
                           handleDataMenuClick(item.id);
-                          setDataDropdownOpen(false);
                         }}
                         className={`w-full text-left px-4 py-2 text-sm flex items-center ${
                           isDataSelected && activeProvider === item.id
@@ -146,8 +163,8 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
             {/* Visualize Dropdown */}
             <div className="relative">
               <button
-                onClick={() => setVisualizeDropdownOpen(!visualizeDropdownOpen)}
-                className="flex items-center px-4 py-2 text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#1E2836] focus:ring-blue-500"
+                onClick={() => toggleDropdown('visualize')}
+                className={`flex items-center px-4 py-2 text-sm font-medium rounded-md text-white ${openDropdown === 'visualize' ? 'bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#1E2836] focus:ring-blue-500`}
               >
                 <span>Visualize</span>
                 <svg className="ml-2 -mr-1 h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
@@ -155,7 +172,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
                 </svg>
               </button>
               
-              {visualizeDropdownOpen && (
+              {openDropdown === 'visualize' && (
                 <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
                   <div className="py-1">
                     {virtualizeMenuItems.map((item) => {
@@ -182,7 +199,6 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
                           onClick={() => {
                             if (!item.disabled) {
                               handleVirtualizeMenuClick(item.id);
-                              setVisualizeDropdownOpen(false);
                             }
                           }}
                           className={`w-full text-left px-4 py-2 text-sm ${
