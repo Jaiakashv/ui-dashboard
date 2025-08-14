@@ -30,7 +30,7 @@ const formatTimeAgo = (date) => {
 };
 
 const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activeProvider, activeView, virtualizeView }) => {
-  const [openDropdown, setOpenDropdown] = useState(null); // 'data', 'visualize', or null
+  const [isDataDropdownOpen, setIsDataDropdownOpen] = useState(false);
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 768) {
@@ -63,8 +63,8 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (!event.target.closest('.dropdown-container')) {
-        setOpenDropdown(null);
+      if (!event.target.closest('.data-dropdown')) {
+        setIsDataDropdownOpen(false);
       }
     };
 
@@ -72,14 +72,14 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const toggleDropdown = (dropdownName) => {
-    setOpenDropdown(openDropdown === dropdownName ? null : dropdownName);
+  const toggleDataDropdown = () => {
+    setIsDataDropdownOpen(!isDataDropdownOpen);
   };
 
   const handleDataMenuClick = (provider) => {
     onViewSelect('data');
     onProviderSelect(provider);
-    setOpenDropdown(null);
+    setIsDataDropdownOpen(false);
 
     const searchParams = new URLSearchParams(window.location.search);
     searchParams.set('view', 'data');
@@ -91,7 +91,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   const handleVirtualizeMenuClick = (viewId) => {
     onViewSelect('virtualize');
     onVirtualizeViewSelect(viewId);
-    setOpenDropdown(null);
+    setIsDataDropdownOpen(false);
 
     const searchParams = new URLSearchParams(window.location.search);
     searchParams.set('view', 'virtualize');
@@ -116,17 +116,18 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
           <nav className="flex items-center space-x-4">
             {/* Data Dropdown */}
             <div className="relative">
-              <button
-                onClick={() => toggleDropdown('data')}
-                className={`flex items-center px-4 py-2 text-sm font-medium rounded-md text-white ${openDropdown === 'data' ? 'bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#1E2836] focus:ring-blue-500`}
-              >
-                <span>Data</span>
-                <svg className="ml-2 -mr-1 h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
-              
-              {openDropdown === 'data' && (
+              <div className="relative data-dropdown">
+                <button
+                  onClick={toggleDataDropdown}
+                  className={`flex items-center px-4 py-2 text-sm font-medium rounded-md text-white ${isDataDropdownOpen ? 'bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#1E2836] focus:ring-blue-500`}
+                >
+                  <span>Data</span>
+                  <svg className="ml-2 -mr-1 h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                  </svg>
+                </button>
+                
+                {isDataDropdownOpen && (
                 <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
                   <div className="py-1">
                     {dataMenuItems.map((item) => (
@@ -157,64 +158,42 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
                     ))}
                   </div>
                 </div>
-              )}
+                )}
+              </div>
             </div>
 
-            {/* Visualize Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => toggleDropdown('visualize')}
-                className={`flex items-center px-4 py-2 text-sm font-medium rounded-md text-white ${openDropdown === 'visualize' ? 'bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-[#1E2836] focus:ring-blue-500`}
-              >
-                <span>Visualize</span>
-                <svg className="ml-2 -mr-1 h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                </svg>
-              </button>
-              
-              {openDropdown === 'visualize' && (
-                <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
-                  <div className="py-1">
-                    {virtualizeMenuItems.map((item) => {
-                      if (item.link) {
-                        return (
-                          <Link
-                            key={item.id}
-                            to={item.link}
-                            onClick={() => setVisualizeDropdownOpen(false)}
-                            className={`block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 ${
-                              location.pathname === item.link ? 'bg-gray-100' : ''
-                            }`}
-                          >
-                            <i className={`${item.icon} mr-3`}></i>
-                            {item.label}
-                          </Link>
-                        );
-                      }
-
-                      return (
-                        <button
-                          key={item.id}
-                          disabled={item.disabled}
-                          onClick={() => {
-                            if (!item.disabled) {
-                              handleVirtualizeMenuClick(item.id);
-                            }
-                          }}
-                          className={`w-full text-left px-4 py-2 text-sm ${
-                            virtualizeView === item.id
-                              ? 'bg-gray-100 text-gray-900'
-                              : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
-                          } ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                          <i className={`${item.icon} mr-3`}></i>
-                          {item.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+            {/* Visualize Menu Items */}
+            <div className="flex space-x-4">
+              {virtualizeMenuItems.map((item) => (
+                <div key={item.id} className="relative">
+                  {item.link ? (
+                    <Link
+                      to={item.link}
+                      className={`flex items-center px-4 py-2 text-sm font-medium rounded-md ${
+                        location.pathname === item.link
+                          ? 'bg-blue-700 text-white'
+                          : 'text-white hover:bg-blue-700'
+                      }`}
+                    >
+                      <i className={`${item.icon} mr-2`}></i>
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <button
+                      disabled={item.disabled}
+                      onClick={() => !item.disabled && handleVirtualizeMenuClick(item.id)}
+                      className={`flex items-center px-4 py-2 text-sm font-medium rounded-md ${
+                        virtualizeView === item.id
+                          ? 'bg-blue-700 text-white'
+                          : 'text-white hover:bg-blue-700'
+                      } ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <i className={`${item.icon} mr-2`}></i>
+                      {item.label}
+                    </button>
+                  )}
                 </div>
-              )}
+              ))}
             </div>
           </nav>
         </div>
