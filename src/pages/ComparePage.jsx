@@ -1,5 +1,16 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+
+// Utility function to sort options with selected items first
+const getSortedOptions = (allOptions, selectedValues) => {
+  if (!selectedValues || selectedValues.length === 0) return allOptions;
+  
+  const selectedSet = new Set(selectedValues);
+  const selected = allOptions.filter(option => selectedSet.has(option.value));
+  const unselected = allOptions.filter(option => !selectedSet.has(option.value));
+  
+  return [...selected, ...unselected];
+};
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
 import { MultiSelect } from 'primereact/multiselect';
@@ -585,14 +596,21 @@ const ComparePage = () => {
                 <MultiSelect
                   value={selectedFroms}
                   onChange={(e) => setSelectedFroms(e.value)}
-                  options={useMemo(() => getFieldSuggestions('From').map(v => ({ label: v, value: v })), [data])}
+                  options={useMemo(() => {
+                    const allOptions = getFieldSuggestions('From').map(v => ({ label: v, value: v }));
+                    return getSortedOptions(allOptions, selectedFroms);
+                  }, [data, selectedFroms])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
-                  placeholder="Departure Country"
+                  placeholder={selectedFroms.length > 3 
+                    ? `${selectedFroms.slice(0, 3).join(' ')} ...` 
+                    : selectedFroms.join(' ') || 'Departure Country'}
+                  selectedItemsLabel="{0} items selected"
                   className="w-full text-sm"
                   filter
                   showSelectAll
+                  maxSelectedLabels={3}
                 />
               </div>
 
@@ -600,29 +618,43 @@ const ComparePage = () => {
                 <MultiSelect
                   value={selectedTos}
                   onChange={(e) => setSelectedTos(e.value)}
-                  options={useMemo(() => getFieldSuggestions('To').map(v => ({ label: v, value: v })), [data])}
+                  options={useMemo(() => {
+                    const allOptions = getFieldSuggestions('To').map(v => ({ label: v, value: v }));
+                    return getSortedOptions(allOptions, selectedTos);
+                  }, [data, selectedTos])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
-                  placeholder="Arrival Country"
+                  placeholder={selectedTos.length > 3 
+                    ? `${selectedTos.slice(0, 3).join(' ')} ...` 
+                    : selectedTos.join(' ') || 'Arrival Country'}
+                  selectedItemsLabel="{0} items selected"
                   className="w-full text-sm"
                   filter
                   showSelectAll
+                  maxSelectedLabels={3}
                 />
               </div>
 
-              <div className="transport-type min-w-[140px]">
+              <div className="transport-type min-w-[160px]">
                 <MultiSelect
                   value={selectedTransportTypes}
                   onChange={(e) => setSelectedTransportTypes(e.value)}
-                  options={useMemo(() => getFieldSuggestions('Transport Type').map(v => ({ label: v, value: v })), [data])}
+                  options={useMemo(() => {
+                    const allOptions = getFieldSuggestions('Transport Type').map(v => ({ label: v, value: v }));
+                    return getSortedOptions(allOptions, selectedTransportTypes);
+                  }, [data, selectedTransportTypes])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
-                  placeholder="Travel Mode"
+                  placeholder={selectedTransportTypes.length > 3 
+                    ? `${selectedTransportTypes.slice(0, 3).join(' ')} ...` 
+                    : selectedTransportTypes.join(' ') || 'Travel Mode'}
+                  selectedItemsLabel="{0} items selected"
                   className="w-full text-sm"
                   filter
                   showSelectAll
+                  maxSelectedLabels={3}
                 />
               </div>
 
@@ -630,14 +662,21 @@ const ComparePage = () => {
                 <MultiSelect
                   value={selectedOperators}
                   onChange={(e) => setSelectedOperators(e.value)}
-                  options={useMemo(() => getFieldSuggestions('Operator').map(v => ({ label: v, value: v })), [data])}
+                  options={useMemo(() => {
+                    const allOptions = getFieldSuggestions('Operator').map(v => ({ label: v, value: v }));
+                    return getSortedOptions(allOptions, selectedOperators);
+                  }, [data, selectedOperators])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
-                  placeholder="Operator"
+                  placeholder={selectedOperators.length > 3 
+                    ? `${selectedOperators.slice(0, 3).join(' ')} ...` 
+                    : selectedOperators.join(' ') || 'Operator'}
+                  selectedItemsLabel="{0} items selected"
                   className="w-full text-sm"
                   filter
                   showSelectAll
+                  maxSelectedLabels={3}
                 />
               </div>
               <div className="clear-all">
