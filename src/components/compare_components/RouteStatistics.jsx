@@ -1,6 +1,19 @@
 import React from 'react';
 
-const RouteStatistics = ({ stats, loading, error }) => {
+const RouteStatistics = ({ stats, loading, error, selectedMetric = null }) => {
+  // Map of metric keys to display names
+  const metricLabels = {
+    'totalRoutes': 'Total Routes',
+    'meanPrice': 'Mean Price',
+    'lowestPrice': 'Lowest Price',
+    'highestPrice': 'Highest Price',
+    'medianPrice': 'Median Price',
+    'standardDeviation': 'Standard Deviation',
+    'uniqueProviders': 'Number of Unique Providers',
+    'cheapestCarriers': 'Cheapest Carriers',
+    'routes': 'Routes (bus, train, etc.)'
+  };
+
   // Format currency
   const formatCurrency = (value) => {
     if (value === null || value === undefined) return 'N/A';
@@ -12,6 +25,42 @@ const RouteStatistics = ({ stats, loading, error }) => {
     }).format(value);
   };
 
+  // Get the selected metric value
+  const getSelectedMetricValue = () => {
+    if (!selectedMetric || !stats[selectedMetric]) return 'N/A';
+    
+    const value = stats[selectedMetric];
+    
+    if (selectedMetric.toLowerCase().includes('price')) {
+      return formatCurrency(value);
+    }
+    
+    if (Array.isArray(value)) {
+      return value.join(', ');
+    }
+    
+    return value?.toLocaleString?.() || value;
+  };
+
+  // If a metric is selected, show only that metric
+  if (selectedMetric) {
+    return (
+      <div className="p-6 bg-white rounded-lg shadow">
+        <h2 className="text-lg font-medium text-gray-900 mb-2">
+          {metricLabels[selectedMetric] || selectedMetric}
+        </h2>
+        <div className="text-3xl font-bold text-gray-900">
+          {loading ? (
+            <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+          ) : error ? (
+            <span className="text-red-500">Error</span>
+          ) : (
+            getSelectedMetricValue()
+          )}
+        </div>
+      </div>
+    );
+  }
   // Render statistics card
   const renderStatCard = (title, value, isCurrency = false) => (
     <div className="bg-white p-4 rounded-lg shadow">

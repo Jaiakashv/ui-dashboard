@@ -120,7 +120,8 @@ const ComparePage = () => {
   const [selectedColumn, setSelectedColumn] = useState(1); 
   const [selectedColumns, setSelectedColumns] = useState([sectionItems.columns[0]]);
   // Initialize with all rows selected by default
-  const [selectedRows, setSelectedRows] = useState(() => [...sectionItems.rows]);
+  const [selectedRows, setSelectedRows] = useState([1]); // Default to 'Total Route'
+  const [selectedMetric, setSelectedMetric] = useState('totalRoutes'); // Default to 'Total Route'
   const [isComparing, setIsComparing] = useState(false);
 
   const updateURL = useCallback(() => {
@@ -151,7 +152,7 @@ const ComparePage = () => {
       params.set('columns', selectedColumns.map(col => col.id).join(','));
     }
     if (selectedRows.length > 0) {
-      params.set('rows', selectedRows.map(row => row.id).join(','));
+      params.set('rows', selectedRows.map(row => row).join(','));
     }
 
     navigate(`?${params.toString()}`, { replace: true });
@@ -227,7 +228,7 @@ const ComparePage = () => {
       const rows = rowIds
         .map(id => sectionItems.rows.find(row => row.id === id))
         .filter(Boolean);
-      if (rows.length > 0) setSelectedRows(rows);
+      if (rows.length > 0) setSelectedRows(rows.map(row => row.id));
     }
 
     if (hasFilters) {
@@ -515,14 +516,39 @@ const ComparePage = () => {
     }
   }, [selectedColumn, memoizedSectionItems.columns]);
 
+  // Map of row IDs to metric keys
+  const rowIdToMetric = {
+    1: 'totalRoutes',
+    2: 'meanPrice',
+    4: 'lowestPrice',
+    5: 'highestPrice',
+    6: 'medianPrice',
+    7: 'standardDeviation',
+    8: 'uniqueProviders',
+    9: 'cheapestCarriers',
+    10: 'routes'
+  };
+
+  const selectedRowsData = useMemo(() => {
+    return sectionItems.rows.filter(row => selectedRows.includes(row.id));
+  }, [selectedRows, sectionItems.rows]);
+
   const handleRowSelectionChange = useCallback((rowIds) => {
-    const selected = memoizedSectionItems.rows.filter(row => rowIds.includes(row.id));
-    setSelectedRows(selected);
+    setSelectedRows(rowIds);
+    // If a single row is selected, update the selected metric
+    if (rowIds.length === 1) {
+      const metric = rowIdToMetric[rowIds[0]];
+      if (metric) {
+        setSelectedMetric(metric);
+      }
+    } else {
+      setSelectedMetric(null);
+    }
   }, [memoizedSectionItems.rows]);
 
   // Ensure all rows are selected when component mounts
   useEffect(() => {
-    setSelectedRows([...memoizedSectionItems.rows]);
+    setSelectedRows([...memoizedSectionItems.rows.map(row => row.id)]);
   }, [memoizedSectionItems.rows]);
 
   const handleColumnChange = useCallback((columnId) => {
@@ -572,6 +598,12 @@ const ComparePage = () => {
                 onColumnChange={handleColumnChange}
                 selectedColumn={selectedColumn}
                 sectionItems={memoizedSectionItems}
+                selectedRows={selectedRows}
+                onRowSelect={(rows) => {
+                  setSelectedRows(rows);
+                  // Set the selected metric if only one row is selected
+                  setSelectedMetric(rows.length === 1 ? rowIdToMetric[rows[0]] : null);
+                }}
               />
             </div>
             
@@ -756,12 +788,10 @@ const ComparePage = () => {
                 </div> */}
                 <div className="flex-1">
                   <CompareTable
-                    data={filteredData}
-                    columns={selectedColumns}
-                    rows={selectedRows}
                     selectedFroms={selectedFroms}
                     selectedTos={selectedTos}
                     selectedTransportTypes={selectedTransportTypes}
+                    selectedMetric={selectedRows.length === 1 ? rowIdToMetric[selectedRows[0]] : null}
                   />
                 </div>
               </div>
