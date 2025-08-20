@@ -12,7 +12,15 @@ import 'primereact/resources/themes/lara-light-indigo/theme.css';
 import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
 
-const DataTableComponent = ({ data }) => {
+const DataTableComponent = ({ 
+  data, 
+  totalRecords, 
+  rows = 50, 
+  first = 0, 
+  onPage = () => {},
+  onSort = () => {},
+  loading = false
+}) => {
   const toast = useRef(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [filteredData, setFilteredData] = useState([]);
@@ -28,7 +36,13 @@ const DataTableComponent = ({ data }) => {
   });
 
   const [globalFilterValue, setGlobalFilterValue] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [lazyState, setLazyState] = useState({
+    first,
+    rows,
+    page: 0,
+    sortField: null,
+    sortOrder: null
+  });
   const [debouncedFilter, setDebouncedFilter] = useState('');
   const timeoutRef = useRef(null);
 
@@ -42,12 +56,10 @@ const DataTableComponent = ({ data }) => {
     [data]
   );
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
+  const onPageChange = (event) => {
+    setLazyState(event);
+    onPage(event);
+  };
 
   // Debounce filter updates
   useEffect(() => {
@@ -194,12 +206,20 @@ const DataTableComponent = ({ data }) => {
   };
 
   const priceBodyTemplate = (rowData) => {
-    const isAvailable = rowData.Price && rowData.Price !== 'Not Available';
+    // Use price_inr field if available, otherwise fall back to price
+    const price = rowData.price_inr !== undefined ? rowData.price_inr : rowData.Price;
+    const isAvailable = price !== undefined && price !== null && price !== 'Not Available' && !isNaN(price);
+    
+    // Format the price with 2 decimal places and add INR symbol
+    const formattedPrice = isAvailable 
+      ? `₹${Number(price).toFixed(2)}`
+      : 'N/A';
+      
     return (
       <Tag
-        value={rowData.Price || 'N/A'}
+        value={formattedPrice}
         severity={isAvailable ? 'success' : 'danger'}
-        style={{ minWidth: '100px', textAlign: 'center' }}
+        style={{ minWidth: '120px', textAlign: 'center' }}
       />
     );
   };
@@ -279,27 +299,38 @@ const DataTableComponent = ({ data }) => {
   return (
     <div className="flex flex-col h-full">
       <Toast ref={toast} />
-      <div className="p-4 pb-2">{renderHeader()}</div>
+      {/* <div className="p-4 pb-2">{renderHeader()}</div> */}
       <div className="flex-1 overflow-hidden">
         <DataTable
-          value={filteredData}
+          value={data}
+          lazy
           paginator
-          rows={10}
-          rowsPerPageOptions={[5, 10, 25, 50]}
-          filters={filters}
-          onFilter={(e) => setFilters(e.filters)}
-          filterDisplay="menu"
-          globalFilterFields={['From', 'To', 'Operator', 'source', 'Price', 'Date']}
+          first={lazyState.first}
+          rows={lazyState.rows}
+          totalRecords={totalRecords}
+          onPage={onPage}
+          onSort={onSort}
+          sortField={lazyState.sortField}
+          sortOrder={lazyState.sortOrder}
+          rowsPerPageOptions={[10, 25, 50, 100]}
+          className="p-datatable-sm"
           loading={loading}
-          emptyMessage="No routes found matching your criteria."
+          filters={filters}
+          globalFilterFields={['From', 'To', 'Operator', 'Price', 'Date', 'source']}
+          header={renderHeader()}
+          emptyMessage="No routes found"
           scrollable
           scrollHeight="flex"
           resizableColumns
-          columnResizeMode="expand"
           showGridlines
           stripedRows
-          responsiveLayout="scroll"
-          className="p-datatable-sm h-full"
+          size="small"
+          filterDisplay="menu"
+          rowHover
+          dataKey="Route URL"
+          rowClassName={() => 'cursor-pointer'}
+          paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+          currentPageReportTemplate="Showing {first} to {last} of {totalRecords} routes"
         >
           {/* Static columns with custom filters */}
           <Column

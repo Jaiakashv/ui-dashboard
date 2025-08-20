@@ -34,14 +34,25 @@ function AppContent() {
   const navigate = useNavigate();
   const isComparePage = location.pathname === '/compare';
   const [tableData, setTableData] = useState([]);
-  const [combinedData, setCombinedData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [activeProvider, setActiveProvider] = useState('12go');
   const [activeView, setActiveView] = useState('data');
   const [virtualizeView, setVirtualizeView] = useState('popular-routes');
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [bookingHorizonData, setBookingHorizonData] = useState([]);
   const [selectedChartType, setSelectedChartType] = useState(CHART_TYPES.DOUGHNUT);
+  
+  // Server-side pagination state
+  const [lazyState, setLazyState] = useState({
+    first: 0,
+    rows: 50,
+    page: 0,
+    totalRecords: 0,
+    sortField: null,
+    sortOrder: null
+  });
 
   const toggleSidebar = () => setSidebarVisible(!sidebarVisible);
 
@@ -61,56 +72,103 @@ function AppContent() {
     }
   }, [navigate]);
 
-  const loadData = async () => {
+  const loadData = async (lazyStateParam) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/trips/all`);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      // Use the provided lazy state or fall back to the component's state
+      const state = lazyStateParam || lazyState;
+      const { first = 0, rows = 50 } = state;
+      
+      // Fetch a smaller initial dataset for the PopularRoutes component
+      const limit = activeView === 'virtualize' && virtualizeView === 'popular-routes' ? 200 : rows;
+      
+      const response = await fetch(
+        `${API_BASE_URL}/api/trips?limit=${limit}&offset=${first}`
+      );
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-      const apiData = await response.json();
+      const responseData = await response.json();
+      let apiData = [];
+      
+      // Handle both array and object response formats
+      if (Array.isArray(responseData)) {
+        apiData = responseData;
+      } else if (responseData.data) {
+        apiData = responseData.data;
+        setLazyState(prev => ({
+          ...prev,
+          totalRecords: responseData.pagination?.total || responseData.data?.length || 0
+        }));
+      }
+
       const transformedData = apiData.map(item => {
-        const formatDuration = (minutes) => {
-          if (!minutes) return null;
-          const hours = Math.floor(minutes / 60);
-          const mins = minutes % 60;
-          return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-        };
+        try {
+          const formatDuration = (minutes) => {
+            if (!minutes && minutes !== 0) return 'N/A';
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+          };
 
-        return {
-          'Route URL': item.route_url || '',
-          'Title': item.title || `${item.origin} → ${item.destination}`,
-          'From-To': `${item.origin} → ${item.destination}`,
-          'From': item.origin || 'Unknown',
-          'To': item.destination || 'Unknown',
-          'Duration': formatDuration(item.duration_min) || 'N/A',
-          'Price': `₹${parseFloat(item.price_thb).toFixed(2)}` || '₹0.00',
-          'Transport Type': item.transport_type || 'N/A',
-          'Operator': item.operator_name || item.provider || 'N/A',
-          'Departure Time': item.departure_time ? 
-            new Date(item.departure_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--',
-          'Arrival Time': item.arrival_time ? 
-            new Date(item.arrival_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--',
-          'Date': item.travel_date ? 
-            new Date(item.travel_date).toISOString().split('T')[0] : 
-            new Date().toISOString().split('T')[0],
-          'source': item.provider || '12go'
-        };
-      });
+          return {
+            'Route URL': item.route_url || '',
+            'Title': item.title || `${item.origin || 'Unknown'} → ${item.destination || 'Unknown'}`,
+            'From-To': `${item.origin || 'Unknown'} → ${item.destination || 'Unknown'}`,
+            'From': item.origin || 'Unknown',
+            'To': item.destination || 'Unknown',
+            'Duration': formatDuration(item.duration_min),
+            'Price': item.price_inr ? parseFloat(item.price_inr) : (item.price_thb ? parseFloat(item.price_thb) : 0),
+            'currency': item.currency || 'THB',
+            'Transport Type': item.transport_type || 'N/A',
+            'Operator': item.operator_name || item.provider || 'N/A',
+            'Departure Time': item.departure_time ? 
+              new Date(item.departure_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--',
+            'Arrival Time': item.arrival_time ? 
+              new Date(item.arrival_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--',
+            'Date': item.travel_date ? 
+              new Date(item.travel_date).toISOString().split('T')[0] : 
+              new Date().toISOString().split('T')[0],
+            'source': item.provider || '12go',
+            'rawData': item // Keep raw data for debugging
+          };
+        } catch (error) {
+          console.error('Error processing item:', { item, error });
+          return null; // Skip this item if there's an error
+        }
+      }).filter(Boolean); // Remove any null entries from mapping errors
 
+      console.log('Transformed data sample:', transformedData.slice(0, 3));
       setTableData(transformedData);
-      setCombinedData(transformedData);
-      return transformedData;
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      setTableData([]);
-      setCombinedData([]);
-      return [];
+      setError(null);
+    } catch (err) {
+      console.error('Error in loadData:', err);
+      setError(`Failed to load data: ${err.message}. Please try again later.`);
+      setTableData([]); // Reset table data on error
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle URL parameters on component mount and when location changes
+  const onPage = (event) => {
+    setLazyState(event);
+    loadData(event);
+  };
+
+  const onSort = (event) => {
+    setLazyState(event);
+    loadData(event);
+  };
+
+  useEffect(() => {
+    // Pass the current lazyState to loadData
+    loadData({ ...lazyState });
+  }, []);
+
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const view = searchParams.get('view');
@@ -145,17 +203,17 @@ function AppContent() {
     if (activeView === 'virtualize') {
       switch (virtualizeView) {
         case 'popular-routes':
-          return <PopularRoutes data={combinedData} />;
+          return <PopularRoutes data={tableData} />;
         case 'price-graph':
-          return <PriceGraph data={combinedData} chartType={selectedChartType} />;
+          return <PriceGraph data={tableData} chartType={selectedChartType} />;
         case 'booking-horizon':
           return <BookingHorizon data={bookingHorizonData} />;
         case 'cheapest-carrier':
-          return <CheapestCarrier data={combinedData} />;
+          return <CheapestCarrier data={tableData} />;
         case 'custom-dashboard':
-          return <CustomDashboard data={combinedData} />;
+          return <CustomDashboard data={tableData} />;
         case 'query-builder':
-          return <QueryBuilder data={combinedData} />;
+          return <QueryBuilder data={tableData} />;
         default:
           return <div>Select a view</div>;
       }
@@ -167,7 +225,15 @@ function AppContent() {
         <p className="mt-4 text-gray-600">Loading {activeProvider} data...</p>
       </div>
     ) : (
-      <DataTable data={tableData} />
+      <DataTable 
+        data={tableData} 
+        totalRecords={lazyState.totalRecords}
+        loading={loading}
+        onPage={onPage}
+        onSort={onSort}
+        first={lazyState.first}
+        rows={lazyState.rows}
+      />
     );
   };
 

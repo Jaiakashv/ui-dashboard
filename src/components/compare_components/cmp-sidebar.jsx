@@ -8,27 +8,19 @@ const Sidebar = ({ onRowSelectionChange, onColumnChange, selectedColumn, section
     rows: true
   });
   
-  // Initialize with all row IDs selected by default
+  // Initialize with only 'Total Route' row selected by default
   const [selectedRows, setSelectedRows] = useState(
-    () => new Set(sectionItems.rows.map(row => row.id))
+    () => new Set(sectionItems.rows.filter(row => row.label === 'Total Route').map(row => row.id))
   );
   const [selectedCol, setSelectedCol] = useState(selectedColumn || 1); // Default to first column
   
   // Update selectedRows when sectionItems.rows changes
   useEffect(() => {
-    const allRowIds = new Set(sectionItems.rows.map(row => row.id));
-    setSelectedRows(prev => {
-      // Keep only the row IDs that still exist in sectionItems.rows
-      const updated = new Set();
-      prev.forEach(id => {
-        if (allRowIds.has(id)) updated.add(id);
-      });
-      // If no rows were preserved, select all rows
-      if (updated.size === 0) {
-        return allRowIds;
-      }
-      return updated;
-    });
+    // Always keep only the 'Total Route' row selected
+    const totalRouteRow = sectionItems.rows.find(row => row.label === 'Total Route');
+    if (totalRouteRow) {
+      setSelectedRows(new Set([totalRouteRow.id]));
+    }
   }, [sectionItems.rows]);
 
   const toggleSection = (section) => {

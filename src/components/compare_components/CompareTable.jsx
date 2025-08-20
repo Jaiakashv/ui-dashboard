@@ -1,9 +1,55 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Card } from 'primereact/card';
+import { Skeleton } from 'primereact/skeleton';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const CompareTable = ({ data, columns, rows, selectedFroms = [], selectedTos = [], selectedTransportTypes = [] }) => {
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({});
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`${API_BASE_URL}/api/stats/routes`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const result = await response.json();
+        setStats(result);
+      } catch (err) {
+        console.error('Error fetching stats:', err);
+        setError('Failed to load statistics. Please try again later.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, [selectedFroms, selectedTos, selectedTransportTypes]);
+
+  if (loading) {
+    return (
+      <div className="p-4">
+        <Skeleton width="100%" height="2rem" className="mb-2" />
+        <Skeleton width="100%" height="2rem" className="mb-2" />
+        <Skeleton width="100%" height="2rem" className="mb-2" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-4 text-center text-red-500">
+        {error}
+      </div>
+    );
+  }
+
   if (!data || !data.length || !columns?.length || !rows?.length) {
     return (
       <div className="p-4 text-center text-gray-500">
@@ -37,101 +83,26 @@ const CompareTable = ({ data, columns, rows, selectedFroms = [], selectedTos = [
       key: allMetrics[row.name].key
     }));
 
-  // Process data to create comparison data structure
+  // Process data using API stats
   const processData = () => {
-    // Filter the data based on selected 'from', 'to', and transport type filters
-    const filteredData = data.filter(item => {
-      const matchesFrom = !selectedFroms.length || selectedFroms.includes(item['From']);
-      const matchesTo = !selectedTos.length || selectedTos.includes(item['To']);
-      const matchesTransportType = !selectedTransportTypes.length || 
-                                 selectedTransportTypes.some(type => 
-                                   item['Transport Type']?.toLowerCase().includes(type.toLowerCase())
-                                 );
-      return matchesFrom && matchesTo && matchesTransportType;
-    });
-
-    // Group data by provider
-    const groupedData = filteredData.reduce((acc, item) => {
-      const provider = item['source'] || 'Unknown';
-      if (!acc[provider]) {
-        acc[provider] = {
-          provider,
-          routes: [],
-          prices: [],
-          operators: new Set(),
-          transportTypes: new Set()
-        };
-      }
-      
-      // Collect all routes and prices for calculations
-      acc[provider].routes.push(item);
-      
-      // Track unique operators and transport types
-      if (item['Operator']) {
-        acc[provider].operators.add(item['Operator']);
-      }
-      if (item['Transport Type']) {
-        acc[provider].transportTypes.add(item['Transport Type']);
-      }
-      
-      // Extract numeric price for calculations
-      const priceStr = item['Price']?.toString() || '';
-      const price = parseFloat(priceStr.replace(/[^0-9.-]+/g, ''));
-      if (!isNaN(price) && price > 0) {
-        acc[provider].prices.push(price);
-      }
-      
-      return acc;
-    }, {});
-
-    // Calculate metrics for each provider
     const providerMetrics = {};
+    const providers = [...new Set(data.map(item => item.source || 'Unknown'))];
     
     providers.forEach(provider => {
-      const providerData = groupedData[provider] || { 
-        routes: [], 
-        prices: [], 
-        operators: new Set(),
-        transportTypes: new Set()
-      };
-      
-      const { routes, prices } = providerData;
-      const priceSum = prices.reduce((a, b) => a + b, 0);
-      const priceCount = prices.length;
-      const meanPrice = priceCount > 0 ? priceSum / priceCount : null;
-      
-      // Calculate standard deviation if needed
-      const stdDev = priceCount > 0 ? 
-        Math.sqrt(prices.reduce((a, b) => a + Math.pow(b - meanPrice, 2), 0) / priceCount) : 
-        null;
-      
-      // Calculate all metrics for this provider
       providerMetrics[provider] = {
-        totalRoutes: routes.length,
-        price: meanPrice,  // Alias for Mean Price Average
-        meanPrice: meanPrice,
-        lowestPrice: priceCount > 0 ? Math.min(...prices) : null,
-        highestPrice: priceCount > 0 ? Math.max(...prices) : null,
-        medianPrice: (() => {
-          if (priceCount === 0) return null;
-          const sorted = [...prices].sort((a, b) => a - b);
-          const mid = Math.floor(priceCount / 2);
-          return priceCount % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-        })(),
-        standardDeviation: stdDev,
-        uniqueProviders: providerData.operators.size,
-        uniqueOperators: providerData.operators.size,
-        cheapestCarriers: (() => {
-          if (priceCount === 0) return 'N/A';
-          const minPrice = Math.min(...prices);
-          const cheapestRoutes = routes.filter(route => {
-            const routePrice = parseFloat((route.Price || '').replace(/[^0-9.-]+/g, '') || '0');
-            return !isNaN(routePrice) && routePrice === minPrice;
-          });
-          const carriers = [...new Set(cheapestRoutes.map(r => r.Operator || 'Unknown'))];
-          return carriers.join(', ') || 'N/A';
-        })(),
-        routeTypes: Array.from(providerData.transportTypes).join(', ') || 'N/A'
+        provider,
+        totalRoutes: stats.TotalRoutes || 0,
+        meanPrice: stats.MeanPrice || 0,
+        price: stats.MeanPrice || 0, // Alias for compatibility
+        lowestPrice: stats.MinPrice || 0,
+        highestPrice: stats.MaxPrice || 0,
+        medianPrice: stats.MedianPrice || 0,
+        uniqueProviders: stats.UniqueProviders || 0,
+        standardDeviation: stats.PriceStdDev || 0,
+        cheapestCarriers: Array.isArray(stats.CheapestCarriers) ? 
+          stats.CheapestCarriers.join(', ') : 'N/A',
+        routeTypes: stats.RouteTypes || 'N/A',
+        uniqueOperators: stats.UniqueProviders || 0
       };
     });
     
@@ -173,20 +144,12 @@ const CompareTable = ({ data, columns, rows, selectedFroms = [], selectedTos = [
                     {metric.name}
                   </td>
                   {providers.map(provider => (
-                    <td key={`${provider}-${metric.key}`} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                      {(() => {
-                        const value = providerMetrics[provider]?.[metric.key];
-                        if (value === null || value === undefined) return 'N/A';
-                        
-                        // Format based on metric type
-                        if (metric.key === 'meanPrice' || 
-                            metric.key === 'lowestPrice' || 
-                            metric.key === 'highestPrice' ||
-                            metric.key === 'medianPrice') {
-                          return formatPrice(value);
-                        }
-                        return value;
-                      })()}
+                    <td key={`${metric.key}-${provider}`} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
+                      {typeof providerMetrics[provider]?.[metric.key] === 'number' 
+                        ? metric.key.toLowerCase().includes('price')
+                          ? formatPrice(providerMetrics[provider][metric.key])
+                          : providerMetrics[provider][metric.key].toLocaleString()
+                        : providerMetrics[provider]?.[metric.key] || 'N/A'}
                     </td>
                   ))}
                 </tr>

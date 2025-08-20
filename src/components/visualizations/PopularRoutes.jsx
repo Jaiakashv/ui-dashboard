@@ -35,7 +35,8 @@ const ROUTE_COUNT_OPTIONS = [
   { label: 'Top 50', value: 50 },
 ];
 
-const PopularRoutes = ({ data }) => {
+const PopularRoutes = ({ data = [] }) => {
+  console.log('PopularRoutes received data:', data);
   const [chartType, setChartType] = useState(CHART_TYPES.BAR);
   const [routeCount, setRouteCount] = useState(10);
   const [selectedRoute, setSelectedRoute] = useState(null);
@@ -49,21 +50,41 @@ const PopularRoutes = ({ data }) => {
   const handleBackToList = () => setSelectedRoute(null);
 
   const { routes, routeDetails } = useMemo(() => {
+    console.log('Processing data in useMemo');
     const routeCounts = {};
     const details = {};
 
-    const validRoutes = data.filter((route) => route.From && route.To);
+    console.log('Raw data items:', data.length);
+    const validRoutes = data.filter((route) => {
+      const hasRequiredFields = route && route.From && route.To;
+      if (!hasRequiredFields) {
+        console.log('Skipping invalid route:', route);
+      }
+      return hasRequiredFields;
+    });
+    console.log('Valid routes:', validRoutes.length);
 
-    validRoutes.forEach((route) => {
-      const key = `${route.From} to ${route.To}`;
+    validRoutes.forEach((route, index) => {
+      if (index < 5) { // Log first few routes for debugging
+        console.log(`Processing route ${index + 1}:`, { 
+          from: route.From, 
+          to: route.To,
+          source: route.source,
+          operator: route.Operator
+        });
+      }
+      // Normalize route names by trimming and converting to lowercase for consistent grouping
+      const from = route.From.trim().toLowerCase();
+      const to = route.To.trim().toLowerCase();
+      const key = `${from}|${to}`;
       const provider = route.source
         ? route.source.replace('.json', '').charAt(0).toUpperCase() + route.source.replace('.json', '').slice(1)
         : 'Unknown';
 
       if (!details[key]) {
         details[key] = {
-          from: route.From,
-          to: route.To,
+          from: from, // Use normalized from
+          to: to,     // Use normalized to
           totalTrips: 0,
           providers: {},
           providerList: [],
@@ -100,18 +121,33 @@ const PopularRoutes = ({ data }) => {
   }, [data]);
 
   const filteredRoutes = useMemo(() => {
-    const searchLower = searchTerm.toLowerCase();
-    return routes
+    console.log('Filtering routes. Total routes:', routes.length);
+    const searchLower = searchTerm.trim().toLowerCase();
+    const filtered = routes
       .filter((route) => {
+        if (!searchLower) return true;
         const fromMatch = route.from?.toLowerCase().includes(searchLower);
         const toMatch = route.to?.toLowerCase().includes(searchLower);
         return fromMatch || toMatch;
       })
-      .slice(0, routeCount)
-      .map((route) => ({
+      .slice(0, routeCount);
+    
+    console.log('Routes after filtering:', filtered.length);
+    
+    const result = filtered.map((route) => {
+      const routeKey = `${route.from}|${route.to}`;
+      const details = routeDetails[routeKey] || {};
+      if (!routeDetails[routeKey]) {
+        console.log('No details found for route:', routeKey);
+      }
+      return {
         ...route,
-        ...routeDetails[`${route.from} to ${route.to}`],
-      }));
+        ...details
+      };
+    });
+    
+    console.log('Final routes to display:', result);
+    return result;
   }, [routes, routeDetails, routeCount, searchTerm]);
 
   const generateColors = (count) => {
@@ -240,65 +276,108 @@ const PopularRoutes = ({ data }) => {
 
   return (
     <div className="bg-white p-4 md:p-6 rounded-lg shadow mt-9">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
-        <h3 className="text-base sm:text-lg font-semibold">Popular Routes</h3>
-        <div className="flex gap-2">
-          <Dropdown
-            value={routeCount}
-            options={ROUTE_COUNT_OPTIONS}
-            onChange={handleRouteCountChange}
-            optionLabel="label"
-            className="w-32"
-            placeholder="Show"
-          />
-          <ChartTypeSelector chartType={chartType} onChange={handleChartTypeChange} />
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <h3 className="text-lg sm:text-xl font-semibold text-gray-800">Popular Routes</h3>
+          <p className="text-sm text-gray-500 mt-1">Showing top {routeCount} most frequent routes</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-40">
+            <i className="pi pi-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+            <input
+              type="text"
+              placeholder="Search routes..."
+              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Dropdown
+              value={routeCount}
+              options={ROUTE_COUNT_OPTIONS}
+              onChange={handleRouteCountChange}
+              optionLabel="label"
+              className="w-32"
+              placeholder="Show"
+            />
+            <ChartTypeSelector chartType={chartType} onChange={handleChartTypeChange} />
+          </div>
         </div>
       </div>
 
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Search routes..."
-          className="w-full p-2 pl-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <i className="pi pi-search absolute left-3 top-3 text-gray-400"></i>
-      </div>
 
       {!selectedRoute ? (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Route</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Trips</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Operators by Provider</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Providers</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredRoutes.map((route) => (
-                <tr key={route.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => handleRouteSelect(route)}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="font-medium text-gray-900">{route.from} → {route.to}</div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                      {route.totalTrips} trips
-                    </span>
-                  </td>
+              {filteredRoutes.map((route, index) => (
+                <tr 
+                  key={route.id} 
+                  className="hover:bg-blue-50 cursor-pointer transition-colors" 
+                  onClick={() => handleRouteSelect(route)}
+                >
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    <div className="space-y-1">
-                      {route.providerList.map(provider => (
-                        <div key={provider.name} className="flex items-center">
-                          <span className="font-medium">{provider.name}:</span>
-                          <span className="ml-1">{provider.count} {provider.count === 1 ? 'operator' : 'operators'}</span>
+                    {index + 1}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 h-10 w-10 flex items-center justify-center bg-blue-100 rounded-full mr-3">
+                        <span className="text-blue-600 font-medium">{index + 1}</span>
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900">
+                          {route.from} → {route.to}
                         </div>
+                        <div className="text-xs text-gray-500">
+                          {route.totalTrips} {route.totalTrips === 1 ? 'trip' : 'trips'}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{route.totalTrips}</div>
+                    <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full" 
+                        style={{ width: `${Math.min(100, (route.totalTrips / (filteredRoutes[0]?.totalTrips || 1)) * 100)}%` }}
+                      ></div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-wrap gap-2">
+                      {route.providerList.slice(0, 3).map((provider, idx) => (
+                        <span 
+                          key={provider.name} 
+                          className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                        >
+                          {provider.name} ({provider.count})
+                        </span>
                       ))}
+                      {route.providerList.length > 3 && (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                          +{route.providerList.length - 3} more
+                        </span>
+                      )}
                     </div>
                   </td>
                 </tr>
               ))}
+              {filteredRoutes.length === 0 && (
+                <tr>
+                  <td colSpan="4" className="px-6 py-4 text-center text-sm text-gray-500">
+                    No routes found matching your search criteria
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

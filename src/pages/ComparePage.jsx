@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import axios from 'axios';
 
 // Utility function to sort options with selected items first
 const getSortedOptions = (allOptions, selectedValues) => {
@@ -18,6 +19,7 @@ import { Calendar } from 'primereact/calendar';
 import Sidebar from '../components/Sidebar';
 import CmpSidebar from '../components/compare_components/cmp-sidebar';
 import CompareTable from '../components/compare_components/CompareTable';
+import RouteStatistics from '../components/compare_components/RouteStatistics';
 
 // Define section items outside the component to avoid recreation
 const sectionItems = {
@@ -39,12 +41,36 @@ const sectionItems = {
   ]
 };
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const ComparePage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const view = searchParams.get('view') || '';
   const provider = searchParams.get('provider') || '';
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Fetch route statistics
+  const fetchRouteStats = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`${API_BASE_URL}/api/stats/routes`);
+      setStats(response.data);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching route statistics:', err);
+      setError('Failed to load route statistics. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRouteStats();
+  }, [fetchRouteStats]);
 
   const handleViewSelect = (viewType) => {
     if (viewType === 'data' && provider) {
@@ -83,9 +109,6 @@ const ComparePage = () => {
   };
 
   const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [selectedTimeline, setSelectedTimeline] = useState('Last 14 Days');
   const [selectedFroms, setSelectedFroms] = useState([]);
   const [selectedTos, setSelectedTos] = useState([]);
