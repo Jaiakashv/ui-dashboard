@@ -1,6 +1,7 @@
 import { PrimeReactProvider } from 'primereact/api';
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
+import { StatsCacheProvider } from './contexts/StatsCacheContext';
 import 'primereact/resources/themes/lara-light-indigo/theme.css';
 import 'primereact/resources/primereact.min.css';
 import 'primeicons/primeicons.css';
@@ -23,9 +24,11 @@ import ComparePage from './pages/ComparePage';
 
 function App() {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <StatsCacheProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </StatsCacheProvider>
   );
 }
 

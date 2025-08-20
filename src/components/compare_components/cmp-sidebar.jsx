@@ -8,18 +8,18 @@ const Sidebar = ({ onRowSelectionChange, onColumnChange, selectedColumn, section
     rows: true
   });
   
-  // Initialize with only 'Total Route' row selected by default
+  // Initialize with only 'Unique Routes' row selected by default
   const [selectedRows, setSelectedRows] = useState(
-    () => new Set(sectionItems.rows.filter(row => row.label === 'Total Route').map(row => row.id))
+    () => new Set(sectionItems.rows.filter(row => row.label === 'Unique Routes').map(row => row.id))
   );
   const [selectedCol, setSelectedCol] = useState(selectedColumn || 1); // Default to first column
   
   // Update selectedRows when sectionItems.rows changes
   useEffect(() => {
-    // Always keep only the 'Total Route' row selected
-    const totalRouteRow = sectionItems.rows.find(row => row.label === 'Total Route');
-    if (totalRouteRow) {
-      setSelectedRows(new Set([totalRouteRow.id]));
+    // Always keep only the 'Unique Routes' row selected
+    const uniqueRoutesRow = sectionItems.rows.find(row => row.label === 'Unique Routes');
+    if (uniqueRoutesRow) {
+      setSelectedRows(new Set([uniqueRoutesRow.id]));
     }
   }, [sectionItems.rows]);
 

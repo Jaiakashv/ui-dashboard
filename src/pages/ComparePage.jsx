@@ -29,7 +29,7 @@ const sectionItems = {
     { id: 3, name: 'Transport Type', disabled: true }
   ],
   rows: [
-    { id: 1, name: 'Total Routes' },
+    { id: 1, name: 'Unique Routes' },
     { id: 2, name: 'Mean Price Average' },
     { id: 4, name: 'Lowest Price' },
     { id: 5, name: 'Highest Price' },
@@ -410,57 +410,48 @@ const ComparePage = () => {
   }, [data, selectedTransportTypes, selectedFroms, selectedTos, selectedTimeline, customRange]);
 
   // -------------------------
-  // Fetch data and normalize travel_date to local YYYY-MM-DD
+  // Fetch route statistics instead of all trips
   // -------------------------
   const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/trips/all`);
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (selectedTransportTypes?.length) params.append('transportType', selectedTransportTypes[0]);
+      if (selectedFroms?.length) params.append('from', selectedFroms[0]);
+      if (selectedTos?.length) params.append('to', selectedTos[0]);
+      
+      const response = await fetch(`${API_BASE_URL}/api/stats/routes?${params.toString()}`);
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-      const apiData = await response.json();
-      const transformedData = apiData.map(item => {
-        const formatDuration = (minutes) => {
-          if (minutes === undefined || minutes === null) return null;
-          const hours = Math.floor(minutes / 60);
-          const mins = minutes % 60;
-          return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-        };
+      const stats = await response.json();
+      
+      // Transform stats into a format the rest of the component expects
+      const transformedData = [{
+        'From': selectedFroms[0] || 'All',
+        'To': selectedTos[0] || 'All',
+        'Transport Type': selectedTransportTypes[0] || 'All',
+        'Total Routes': stats.totalRoutes || 0,
+        'Mean Price': stats.meanPrice || 0,
+        'Lowest Price': stats.lowestPrice || 0,
+        'Highest Price': stats.highestPrice || 0,
+        'Median Price': stats.medianPrice || 0,
+        'Price Standard Deviation': stats.standardDeviation || 0,
+        'Unique Providers': stats.uniqueProviders || 0,
+        'Cheapest Carriers': stats.cheapestCarriers || 'N/A',
+        'Available Transport Types': stats.routes || 'N/A',
+        'Duration': 'N/A',
+        'Price': stats.meanPrice ? `₹${parseFloat(stats.meanPrice).toFixed(2)}` : '₹0.00',
+        'Operator': 'N/A',
+        'Departure Time': '--:--',
+        'Arrival Time': '--:--',
+        'Date': new Date().toISOString().split('T')[0],
+        'source': '12go'
+      }];
 
-        // Normalize travel_date into local YYYY-MM-DD
-        let travelDateLocal = '';
-        if (item.travel_date) {
-          const parsed = new Date(item.travel_date);
-          if (!isNaN(parsed.getTime())) {
-            travelDateLocal = formatDateLocal(parsed);
-          } else {
-            travelDateLocal = formatDateLocal(new Date());
-          }
-        } else {
-          travelDateLocal = formatDateLocal(new Date());
-        }
-
-        return {
-          'Route URL': item.route_url || '',
-          'Title': item.title || `${item.origin} → ${item.destination}`,
-          'From-To': `${item.origin} → ${item.destination}`,
-          'From': item.origin || 'Unknown',
-          'To': item.destination || 'Unknown',
-          'Duration': formatDuration(item.duration_min) || 'N/A',
-          'Price': item.price_thb ? `₹${parseFloat(item.price_thb).toFixed(2)}` : '₹0.00',
-          'Transport Type': item.transport_type || 'N/A',
-          'Operator': item.operator_name || item.provider || 'N/A',
-          'Departure Time': item.departure_time ?
-            new Date(item.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--',
-          'Arrival Time': item.arrival_time ?
-            new Date(item.arrival_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--',
-          'Date': travelDateLocal,
-          'source': item.provider || '12go'
-        };
-      });
-
+      // For the compare page, we only need the stats, not the full dataset
       setData(transformedData);
       setError(null);
     } catch (err) {
@@ -470,7 +461,7 @@ const ComparePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [API_BASE_URL]);
+  }, [selectedFroms, selectedTos, selectedTransportTypes]);
 
   // Initial data fetch
   useEffect(() => {
@@ -791,7 +782,7 @@ const ComparePage = () => {
                     selectedFroms={selectedFroms}
                     selectedTos={selectedTos}
                     selectedTransportTypes={selectedTransportTypes}
-                    selectedMetric={selectedRows.length === 1 ? rowIdToMetric[selectedRows[0]] : null}
+                    selectedMetrics={selectedRows.map(rowId => rowIdToMetric[rowId])}
                   />
                 </div>
               </div>
