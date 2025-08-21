@@ -5,7 +5,14 @@ import { useStatsCache } from '../../contexts/StatsCacheContext';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const DEBOUNCE_DELAY = 500; // ms
 
-const CompareTable = ({ selectedFroms = [], selectedTos = [], selectedTransportTypes = [], selectedMetrics = [] }) => {
+const CompareTable = ({ 
+  selectedFroms = [], 
+  selectedTos = [], 
+  selectedTransportTypes = [], 
+  selectedMetrics = [],
+  onMetricClick,
+  loadingMetrics = {}
+}) => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({});
   const [error, setError] = useState(null);
@@ -147,17 +154,69 @@ const CompareTable = ({ selectedFroms = [], selectedTos = [], selectedTransportT
       return isCurrency ? formatCurrency(value) : value;
     };
 
-    // Map of all possible metrics to their display values
+    // Map of all possible metrics to their display values and click handlers
     const allMetrics = {
-      'totalRoutes': { label: 'Unique Routes', value: stats?.totalRoutes, isCurrency: false },
-      'meanPrice': { label: 'Mean Price', value: stats?.meanPrice, isCurrency: true },
-      'lowestPrice': { label: 'Lowest Price', value: stats?.lowestPrice, isCurrency: true },
-      'highestPrice': { label: 'Highest Price', value: stats?.highestPrice, isCurrency: true },
-      'medianPrice': { label: 'Median Price', value: stats?.medianPrice, isCurrency: true },
-      'standardDeviation': { label: 'Price Standard Deviation', value: stats?.standardDeviation, isCurrency: true },
-      'uniqueProviders': { label: 'Number of Unique Providers', value: stats?.uniqueProviders, isCurrency: false },
-      'cheapestCarriers': { label: 'Cheapest Carriers', value: stats?.cheapestCarriers, isCurrency: false },
-      'routes': { label: 'Available Transport Types', value: stats?.routes, isCurrency: false }
+      'totalRoutes': { 
+        label: 'Unique Routes', 
+        value: stats?.totalRoutes, 
+        isCurrency: false,
+        isLoading: loadingMetrics['totalRoutes']
+      },
+      'meanPrice': { 
+        label: 'Mean Price', 
+        value: stats?.meanPrice, 
+        isCurrency: true,
+        isLoading: loadingMetrics['meanPrice']
+      },
+      'lowestPrice': { 
+        label: 'Lowest Price', 
+        value: stats?.lowestPrice, 
+        isCurrency: true,
+        isLoading: loadingMetrics['lowestPrice']
+      },
+      'highestPrice': { 
+        label: 'Highest Price', 
+        value: stats?.highestPrice, 
+        isCurrency: true,
+        isLoading: loadingMetrics['highestPrice']
+      },
+      'medianPrice': { 
+        label: 'Median Price', 
+        value: stats?.medianPrice, 
+        isCurrency: true,
+        isLoading: loadingMetrics['medianPrice']
+      },
+      'standardDeviation': { 
+        label: 'Price Standard Deviation', 
+        value: stats?.standardDeviation, 
+        isCurrency: true,
+        isLoading: loadingMetrics['standardDeviation']
+      },
+      'uniqueProviders': { 
+        label: 'Number of Unique Providers', 
+        value: stats?.uniqueProviders, 
+        isCurrency: false,
+        isLoading: loadingMetrics['uniqueProviders']
+      },
+      'cheapestCarriers': { 
+        label: 'Cheapest Carriers', 
+        value: stats?.cheapestCarriers, 
+        isCurrency: false,
+        isLoading: loadingMetrics['cheapestCarriers']
+      },
+      'routes': { 
+        label: 'Available Transport Types', 
+        value: stats?.routes, 
+        isCurrency: false,
+        isLoading: false // Routes is a static metric
+      }
+    };
+    
+    // Handle metric click
+    const handleMetricClick = (metricKey) => {
+      if (onMetricClick) {
+        onMetricClick(allMetrics[metricKey].label);
+      }
     };
 
     // Filter the metrics based on what's selected
@@ -199,14 +258,26 @@ const CompareTable = ({ selectedFroms = [], selectedTos = [], selectedTransportT
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {tableData.map((item, index) => (
-                <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                <tr 
+                key={item.label}
+                className="hover:bg-gray-50 cursor-pointer transition-colors"
+                onClick={() => handleMetricClick(Object.keys(allMetrics).find(key => allMetrics[key].label === item.label))}
+              >
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <div className="flex items-center">
                     {item.label}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
-                    {formatValue(item.value, item.isCurrency)}
-                  </td>
-                </tr>
+                    {item.isLoading && (
+                      <svg className="animate-spin -mr-1 ml-2 h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    )}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
+                  {item.isLoading ? 'Loading...' : formatValue(item.value, item.isCurrency)}
+                </td>
+              </tr>
               ))}
             </tbody>
           </table>

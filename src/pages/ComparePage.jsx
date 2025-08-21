@@ -53,53 +53,216 @@ const ComparePage = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedFroms, setSelectedFroms] = useState([]);
+  const [selectedTos, setSelectedTos] = useState([]);
+  const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
+  const [data, setData] = useState([]);
+  const [loadingMetrics, setLoadingMetrics] = useState({});
+
+  // Fetch individual stat
+  const fetchStat = async (endpoint) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/stats/routes/${endpoint}`);
+      return response.data;
+    } catch (err) {
+      console.error(`Error fetching ${endpoint}:`, err);
+      return null;
+    }
+  };
 
   // Fetch route statistics
-  const fetchRouteStats = useCallback(async () => {
+  const fetchRouteStats = useCallback(async (metric = null) => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_BASE_URL}/api/stats/routes`);
-      setStats(response.data);
+      
+      // Create query params
+      const params = new URLSearchParams();
+      if (selectedFroms.length > 0) params.append('from', selectedFroms[0]);
+      if (selectedTos.length > 0) params.append('to', selectedTos[0]);
+      if (selectedTransportTypes.length > 0) params.append('transportType', selectedTransportTypes[0]);
+      
+      const queryString = params.toString();
+      
+      // If a specific metric is requested, only fetch that one
+      if (metric) {
+        const metricEndpoint = metric.toLowerCase().replace(/\s+/g, '');
+        const result = await fetchStat(`${metricEndpoint}?${queryString}`);
+        
+        const metricMap = {
+          'unique routes': { totalRoutes: result?.count || 0 },
+          'mean price average': { meanPrice: result?.mean || '0.00' },
+          'lowest price': { lowestPrice: result?.min || '0.00' },
+          'highest price': { highestPrice: result?.max || '0.00' },
+          'median price': { medianPrice: result?.median || '0.00' },
+          'standard deviation': { standardDeviation: result?.stddev || '0.00' },
+          'no of unique providers': { uniqueProviders: result?.count || 0 },
+          'cheapest carriers': { cheapestCarriers: result?.carriers || [] },
+          'routes': { routes: selectedTransportTypes.join(', ') || 'All' }
+        };
+        
+        const updatedStats = { ...stats, ...metricMap[metric.toLowerCase()] };
+        setStats(updatedStats);
+        setError(null);
+        return updatedStats;
+      }
+      
+      // Otherwise fetch all stats in parallel
+      const [
+        total, 
+        mean, 
+        min, 
+        max, 
+        median, 
+        stddev, 
+        unique, 
+        cheapest
+      ] = await Promise.all([
+        fetchStat(`total?${queryString}`),
+        fetchStat(`meanprice?${queryString}`),
+        fetchStat(`lowestprice?${queryString}`),
+        fetchStat(`highestprice?${queryString}`),
+        fetchStat(`medianprice?${queryString}`),
+        fetchStat(`standarddeviation?${queryString}`),
+        fetchStat(`uniqueproviders?${queryString}`),
+        fetchStat(`cheapestcarriers?${queryString}`)
+      ]);
+
+      // Combine all stats into one object
+      const combinedStats = {
+        totalRoutes: total?.count || 0,
+        meanPrice: mean?.mean || '0.00',
+        lowestPrice: min?.min || '0.00',
+        highestPrice: max?.max || '0.00',
+        medianPrice: median?.median || '0.00',
+        standardDeviation: stddev?.stddev || '0.00',
+        uniqueProviders: unique?.count || 0,
+        cheapestCarriers: cheapest?.carriers || [],
+        routes: selectedTransportTypes.join(', ') || 'All'
+      };
+
+      setStats(combinedStats);
       setError(null);
+      return combinedStats;
     } catch (err) {
       console.error('Error fetching route statistics:', err);
       setError('Failed to load route statistics. Please try again later.');
+      throw err; // Re-throw to allow error handling in the caller
     } finally {
       setLoading(false);
     }
+  }, [selectedFroms, selectedTos, selectedTransportTypes]);
+
+  // Get transformed data from stats
+  const getTransformedData = useCallback((stats) => {
+    if (!stats) return [];
+    
+    return [{
+      id: 1,
+      name: 'Unique Routes',
+      value: stats.totalRoutes || 0
+    }, {
+      id: 2,
+      name: 'Mean Price Average',
+      value: stats.meanPrice || '0.00'
+    }, {
+      id: 3,
+      name: 'Lowest Price',
+      value: stats.lowestPrice || '0.00'
+    }, {
+      id: 4,
+      name: 'Highest Price',
+      value: stats.highestPrice || '0.00'
+    }, {
+      id: 5,
+      name: 'Median Price',
+      value: stats.medianPrice || '0.00'
+    }, {
+      id: 6,
+      name: 'Standard Deviation',
+      value: stats.standardDeviation || '0.00'
+    }, {
+      id: 7,
+      name: 'No of Unique Providers',
+      value: stats.uniqueProviders || 0
+    }, {
+      id: 8,
+      name: 'Cheapest Carriers',
+      value: stats.cheapestCarriers ? stats.cheapestCarriers.join(', ') : 'N/A'
+    }, {
+      id: 9,
+      name: 'Routes',
+      value: stats.routes || 'All'
+    }];
   }, []);
 
-  // Fetch route stats on component mount only
+  // Update data when stats change
   useEffect(() => {
-    const controller = new AbortController();
-    
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.get(`${API_BASE_URL}/api/stats/routes`, {
-          signal: controller.signal
-        });
-        setStats(response.data);
-        setError(null);
-      } catch (err) {
-        if (!axios.isCancel(err)) {
-          console.error('Error fetching route statistics:', err);
-          setError('Failed to load route statistics. Please try again later.');
+    if (stats) {
+      setData(prevData => {
+        // If we have no data yet, initialize with default values
+        if (!prevData || prevData.length === 0) {
+          return sectionItems.rows.map(row => ({
+            id: row.id,
+            name: row.name,
+            value: 'Click to load'
+          }));
         }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    };
 
-    fetchData();
+        // Only update the specific metric that was fetched
+        const updatedData = prevData.map(item => {
+          const statKey = item.name.toLowerCase();
+          switch (statKey) {
+            case 'unique routes':
+              return { ...item, value: stats.totalRoutes || 0 };
+            case 'mean price average':
+              return { ...item, value: stats.meanPrice || '0.00' };
+            case 'lowest price':
+              return { ...item, value: stats.lowestPrice || '0.00' };
+            case 'highest price':
+              return { ...item, value: stats.highestPrice || '0.00' };
+            case 'median price':
+              return { ...item, value: stats.medianPrice || '0.00' };
+            case 'standard deviation':
+              return { ...item, value: stats.standardDeviation || '0.00' };
+            case 'no of unique providers':
+              return { ...item, value: stats.uniqueProviders || 0 };
+            case 'cheapest carriers':
+              return { ...item, value: stats.cheapestCarriers?.join(', ') || 'N/A' };
+            case 'routes':
+              return { ...item, value: stats.routes || 'All' };
+            default:
+              return item;
+          }
+        });
+        return updatedData;
+      });
+    }
+  }, [stats]);
+
+  // Handle metric click - fetch only the clicked metric
+  const handleMetricClick = useCallback((metricName) => {
+    // Don't fetch data for these static metrics
+    if (['Routes'].includes(metricName)) return;
     
-    // Cleanup function to cancel the request if the component unmounts
-    return () => {
-      controller.abort();
-    };
-  }, []); // Empty dependency array ensures this runs only once on mount
+    // Check if we already have this metric's data
+    const metricData = data.find(item => item.name.toLowerCase() === metricName.toLowerCase());
+    if (!metricData || metricData.value === '0.00' || metricData.value === 0 || metricData.value === 'Click to load') {
+      // Set loading state for this metric
+      setLoadingMetrics(prev => ({
+        ...prev,
+        [metricName]: true
+      }));
+      
+      // Fetch the metric data
+      fetchRouteStats(metricName).finally(() => {
+        setLoadingMetrics(prev => ({
+          ...prev,
+          [metricName]: false
+        }));
+      });
+    }
+  }, [data, fetchRouteStats]);
+
 
   const handleViewSelect = (viewType) => {
     if (viewType === 'data' && provider) {
@@ -137,14 +300,15 @@ const ComparePage = () => {
     return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
   };
 
-  const [data, setData] = useState([]);
   const [selectedTimeline, setSelectedTimeline] = useState('Last 14 Days');
-  const [selectedFroms, setSelectedFroms] = useState([]);
-  const [selectedTos, setSelectedTos] = useState([]);
   const [fromSuggestions, setFromSuggestions] = useState([]);
   const [toSuggestions, setToSuggestions] = useState([]);
+  const [transportTypeSuggestions, setTransportTypeSuggestions] = useState([]);
+  const [operatorSuggestions, setOperatorSuggestions] = useState([]);
   const [isLoadingFrom, setIsLoadingFrom] = useState(false);
   const [isLoadingTo, setIsLoadingTo] = useState(false);
+  const [isLoadingTransportType, setIsLoadingTransportType] = useState(false);
+  const [isLoadingOperator, setIsLoadingOperator] = useState(false);
 
   // Fetch origin suggestions
   const fetchFromSuggestions = async (query) => {
@@ -176,6 +340,40 @@ const ComparePage = () => {
     }
   };
 
+  // Fetch transport type suggestions
+  const fetchTransportTypeSuggestions = async (query) => {
+    if (!query) return [];
+    setIsLoadingTransportType(true);
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/trips/search?field=transport_type&q=${encodeURIComponent(query)}`
+      );
+      return response.data.results || [];
+    } catch (error) {
+      console.error('Error fetching transport type suggestions:', error);
+      return [];
+    } finally {
+      setIsLoadingTransportType(false);
+    }
+  };
+
+  // Fetch operator suggestions
+  const fetchOperatorSuggestions = async (query) => {
+    if (!query) return [];
+    setIsLoadingOperator(true);
+    try {
+      const response = await axios.get(
+        `${API_BASE_URL}/api/trips/search?field=operator_name&q=${encodeURIComponent(query)}`
+      );
+      return response.data.results || [];
+    } catch (error) {
+      console.error('Error fetching operator suggestions:', error);
+      return [];
+    } finally {
+      setIsLoadingOperator(false);
+    }
+  };
+
   // Handle origin filter
   const onFromFilter = async (event) => {
     const results = await fetchFromSuggestions(event.filter);
@@ -187,7 +385,18 @@ const ComparePage = () => {
     const results = await fetchToSuggestions(event.filter);
     setToSuggestions(results);
   };
-  const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
+
+  // Handle transport type filter
+  const onTransportTypeFilter = async (event) => {
+    const results = await fetchTransportTypeSuggestions(event.filter);
+    setTransportTypeSuggestions(results);
+  };
+
+  // Handle operator filter
+  const onOperatorFilter = async (event) => {
+    const results = await fetchOperatorSuggestions(event.filter);
+    setOperatorSuggestions(results);
+  };
   const [selectedOperators, setSelectedOperators] = useState([]);
   const [customRange, setCustomRange] = useState(null);
   const [selectedDateField, setSelectedDateField] = useState('');
@@ -361,13 +570,7 @@ const ComparePage = () => {
     location.search
   ]);
 
-  // -------------------------
-  // Date utilities used in filtering
-  // -------------------------
-  // Get date range based on selected timeline
-  const getDateRange = () => {
-    const now = new Date();
-
+  const getDateRange = useCallback(() => {
     const presets = {
       'Today': () => {
         const start = new Date();
@@ -442,7 +645,7 @@ const ComparePage = () => {
 
     const rangeFn = presets[selectedTimeline];
     return rangeFn ? rangeFn() : { start: null, end: null };
-  };
+  }, [selectedTimeline, customRange]);
   const filterDataByDateRange = (dataList) => {
     if (!dataList || !Array.isArray(dataList)) return [];
 
@@ -492,59 +695,22 @@ const ComparePage = () => {
     return filtered;
   }, [data, selectedTransportTypes, selectedFroms, selectedTos, selectedTimeline, customRange]);
 
-  // -------------------------
-  // Fetch route statistics instead of all trips
-  // -------------------------
-  const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-
+  // Fetch route statistics
   const fetchData = useCallback(async () => {
-    setLoading(true);
     try {
-      // Build query parameters
-      const params = new URLSearchParams();
-      if (selectedTransportTypes?.length) params.append('transportType', selectedTransportTypes[0]);
-      if (selectedFroms?.length) params.append('from', selectedFroms[0]);
-      if (selectedTos?.length) params.append('to', selectedTos[0]);
-      
-      const response = await fetch(`${API_BASE_URL}/api/stats/routes?${params.toString()}`);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-      const stats = await response.json();
-      
-      // Transform stats into a format the rest of the component expects
-      const transformedData = [{
-        'From': selectedFroms[0] || 'All',
-        'To': selectedTos[0] || 'All',
-        'Transport Type': selectedTransportTypes[0] || 'All',
-        'Total Routes': stats.totalRoutes || 0,
-        'Mean Price': stats.meanPrice || 0,
-        'Lowest Price': stats.lowestPrice || 0,
-        'Highest Price': stats.highestPrice || 0,
-        'Median Price': stats.medianPrice || 0,
-        'Price Standard Deviation': stats.standardDeviation || 0,
-        'Unique Providers': stats.uniqueProviders || 0,
-        'Cheapest Carriers': stats.cheapestCarriers || 'N/A',
-        'Available Transport Types': stats.routes || 'N/A',
-        'Duration': 'N/A',
-        'Price': stats.meanPrice ? `₹${parseFloat(stats.meanPrice).toFixed(2)}` : '₹0.00',
-        'Operator': 'N/A',
-        'Departure Time': '--:--',
-        'Arrival Time': '--:--',
-        'Date': new Date().toISOString().split('T')[0],
-        'source': '12go'
-      }];
-
-      // For the compare page, we only need the stats, not the full dataset
-      setData(transformedData);
-      setError(null);
+      setLoading(true);
+      const stats = await fetchRouteStats();
+      if (stats) {
+        const transformedData = getTransformedData(stats);
+        setData(transformedData);
+      }
     } catch (err) {
-      console.error('Error fetching data:', err);
-      setError('Failed to load data. Please ensure the backend server is running.');
-      setData([]);
+      console.error('Error in fetchData:', err);
+      setError('Failed to load data. Please try again later.');
     } finally {
       setLoading(false);
     }
-  }, [selectedFroms, selectedTos, selectedTransportTypes]);
+  }, [fetchRouteStats, getTransformedData]);
 
   // Initial data fetch
   useEffect(() => {
@@ -782,20 +948,28 @@ const ComparePage = () => {
                   value={selectedTransportTypes}
                   onChange={(e) => setSelectedTransportTypes(e.value)}
                   options={useMemo(() => {
-                    const allOptions = getFieldSuggestions('Transport Type').map(v => ({ label: v, value: v }));
-                    return getSortedOptions(allOptions, selectedTransportTypes);
-                  }, [data, selectedTransportTypes])}
+                    // Combine existing selections with search results
+                    const existingOptions = selectedTransportTypes.map(v => ({ label: v, value: v }));
+                    const suggestionOptions = transportTypeSuggestions
+                      .filter(s => !selectedTransportTypes.includes(s.transport_type))
+                      .map(s => ({ label: s.transport_type, value: s.transport_type }));
+                    return [...existingOptions, ...suggestionOptions];
+                  }, [selectedTransportTypes, transportTypeSuggestions])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
                   placeholder={selectedTransportTypes.length > 3 
                     ? `${selectedTransportTypes.slice(0, 3).join(' ')} ...` 
                     : selectedTransportTypes.join(' ') || 'Travel Mode'}
-                  selectedItemsLabel="{0} items selected"
+                  selectedItemsLabel="{0} transport types selected"
                   className="w-full text-sm"
                   filter
+                  onFilter={onTransportTypeFilter}
+                  filterBy="label"
                   showSelectAll
                   maxSelectedLabels={3}
+                  loading={isLoadingTransportType}
+                  emptyFilterMessage="No transport types found"
                 />
               </div>
 
@@ -804,20 +978,28 @@ const ComparePage = () => {
                   value={selectedOperators}
                   onChange={(e) => setSelectedOperators(e.value)}
                   options={useMemo(() => {
-                    const allOptions = getFieldSuggestions('Operator').map(v => ({ label: v, value: v }));
-                    return getSortedOptions(allOptions, selectedOperators);
-                  }, [data, selectedOperators])}
+                    // Combine existing selections with search results
+                    const existingOptions = selectedOperators.map(v => ({ label: v, value: v }));
+                    const suggestionOptions = operatorSuggestions
+                      .filter(s => !selectedOperators.includes(s.operator_name))
+                      .map(s => ({ label: s.operator_name, value: s.operator_name }));
+                    return [...existingOptions, ...suggestionOptions];
+                  }, [selectedOperators, operatorSuggestions])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
                   placeholder={selectedOperators.length > 3 
                     ? `${selectedOperators.slice(0, 3).join(' ')} ...` 
                     : selectedOperators.join(' ') || 'Operator'}
-                  selectedItemsLabel="{0} items selected"
+                  selectedItemsLabel="{0} operators selected"
                   className="w-full text-sm"
                   filter
+                  onFilter={onOperatorFilter}
+                  filterBy="label"
                   showSelectAll
                   maxSelectedLabels={3}
+                  loading={isLoadingOperator}
+                  emptyFilterMessage="No operators found"
                 />
               </div>
               <div className="clear-all">
@@ -877,7 +1059,9 @@ const ComparePage = () => {
                     selectedFroms={selectedFroms}
                     selectedTos={selectedTos}
                     selectedTransportTypes={selectedTransportTypes}
+                    onMetricClick={handleMetricClick}
                     selectedMetrics={selectedRows.map(rowId => rowIdToMetric[rowId])}
+                    loadingMetrics={loadingMetrics}
                   />
                 </div>
               </div>
