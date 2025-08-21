@@ -10,16 +10,27 @@ const Sidebar = ({ onRowSelectionChange, onColumnChange, selectedColumn, section
   
   // Initialize with only 'Unique Routes' row selected by default
   const [selectedRows, setSelectedRows] = useState(
-    () => new Set(sectionItems.rows.filter(row => row.label === 'Unique Routes').map(row => row.id))
+    () => {
+      const uniqueRows = sectionItems.rows.filter(row => row.name === 'Unique Routes');
+      console.log('Initial rows:', sectionItems.rows);
+      console.log('Unique routes rows found:', uniqueRows);
+      return new Set(uniqueRows.map(row => row.id));
+    }
   );
   const [selectedCol, setSelectedCol] = useState(selectedColumn || 1); // Default to first column
   
   // Update selectedRows when sectionItems.rows changes
   useEffect(() => {
+    console.log('sectionItems.rows updated:', sectionItems.rows);
     // Always keep only the 'Unique Routes' row selected
-    const uniqueRoutesRow = sectionItems.rows.find(row => row.label === 'Unique Routes');
+    const uniqueRoutesRow = sectionItems.rows.find(row => row.name === 'Unique Routes');
+    console.log('Found uniqueRoutesRow:', uniqueRoutesRow);
+    
     if (uniqueRoutesRow) {
+      console.log('Setting selectedRows to:', uniqueRoutesRow.id);
       setSelectedRows(new Set([uniqueRoutesRow.id]));
+    } else {
+      console.warn('No row with name "Unique Routes" found in:', sectionItems.rows);
     }
   }, [sectionItems.rows]);
 
