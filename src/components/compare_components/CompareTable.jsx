@@ -173,7 +173,7 @@ const CompareTable = ({ selectedFroms = [], selectedTos = [], selectedTransportT
             <span className="text-sm font-medium text-gray-500">Source:</span>
             <span className="ml-2 text-sm font-medium text-gray-900">12go</span>
           </div>
-          <div className="text-xs text-gray-500">
+          {/* <div className="text-xs text-gray-500">
             {new Date().toLocaleDateString('en-US', {
               year: 'numeric',
               month: 'short',
@@ -181,7 +181,7 @@ const CompareTable = ({ selectedFroms = [], selectedTos = [], selectedTransportT
               hour: '2-digit',
               minute: '2-digit'
             })}
-          </div>
+          </div> */}
         </div>
         
         {/* Table */}

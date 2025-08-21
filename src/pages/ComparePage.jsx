@@ -48,6 +48,7 @@ const ComparePage = () => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const view = searchParams.get('view') || '';
+  
   const provider = searchParams.get('provider') || '';
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -68,9 +69,37 @@ const ComparePage = () => {
     }
   }, []);
 
+  // Fetch route stats on component mount only
   useEffect(() => {
-    fetchRouteStats();
-  }, [fetchRouteStats]);
+    const controller = new AbortController();
+    
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        const response = await axios.get(`${API_BASE_URL}/api/stats/routes`, {
+          signal: controller.signal
+        });
+        setStats(response.data);
+        setError(null);
+      } catch (err) {
+        if (!axios.isCancel(err)) {
+          console.error('Error fetching route statistics:', err);
+          setError('Failed to load route statistics. Please try again later.');
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchData();
+    
+    // Cleanup function to cancel the request if the component unmounts
+    return () => {
+      controller.abort();
+    };
+  }, []); // Empty dependency array ensures this runs only once on mount
 
   const handleViewSelect = (viewType) => {
     if (viewType === 'data' && provider) {
@@ -112,6 +141,52 @@ const ComparePage = () => {
   const [selectedTimeline, setSelectedTimeline] = useState('Last 14 Days');
   const [selectedFroms, setSelectedFroms] = useState([]);
   const [selectedTos, setSelectedTos] = useState([]);
+  const [fromSuggestions, setFromSuggestions] = useState([]);
+  const [toSuggestions, setToSuggestions] = useState([]);
+  const [isLoadingFrom, setIsLoadingFrom] = useState(false);
+  const [isLoadingTo, setIsLoadingTo] = useState(false);
+
+  // Fetch origin suggestions
+  const fetchFromSuggestions = async (query) => {
+    if (!query) return [];
+    setIsLoadingFrom(true);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/trips/search?field=origin&q=${encodeURIComponent(query)}`);
+      return response.data.results || [];
+    } catch (error) {
+      console.error('Error fetching origin suggestions:', error);
+      return [];
+    } finally {
+      setIsLoadingFrom(false);
+    }
+  };
+
+  // Fetch destination suggestions
+  const fetchToSuggestions = async (query) => {
+    if (!query) return [];
+    setIsLoadingTo(true);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/trips/search?field=destination&q=${encodeURIComponent(query)}`);
+      return response.data.results || [];
+    } catch (error) {
+      console.error('Error fetching destination suggestions:', error);
+      return [];
+    } finally {
+      setIsLoadingTo(false);
+    }
+  };
+
+  // Handle origin filter
+  const onFromFilter = async (event) => {
+    const results = await fetchFromSuggestions(event.filter);
+    setFromSuggestions(results);
+  };
+
+  // Handle destination filter
+  const onToFilter = async (event) => {
+    const results = await fetchToSuggestions(event.filter);
+    setToSuggestions(results);
+  };
   const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
   const [selectedOperators, setSelectedOperators] = useState([]);
   const [customRange, setCustomRange] = useState(null);
@@ -119,8 +194,8 @@ const ComparePage = () => {
 
   const [selectedColumn, setSelectedColumn] = useState(1); 
   const [selectedColumns, setSelectedColumns] = useState([sectionItems.columns[0]]);
-  // Initialize with all rows selected by default
-  const [selectedRows, setSelectedRows] = useState([1]); // Default to 'Total Route'
+  // Initialize with only 'totalRoutes' selected by default (row ID 1)
+  const [selectedRows, setSelectedRows] = useState([1]);
   const [selectedMetric, setSelectedMetric] = useState('totalRoutes'); // Default to 'Total Route'
   const [isComparing, setIsComparing] = useState(false);
 
@@ -228,7 +303,15 @@ const ComparePage = () => {
       const rows = rowIds
         .map(id => sectionItems.rows.find(row => row.id === id))
         .filter(Boolean);
-      if (rows.length > 0) setSelectedRows(rows.map(row => row.id));
+      if (rows.length > 0) {
+        setSelectedRows(rows.map(row => row.id));
+      } else {
+        // If no valid rows in URL, default to showing only 'totalRoutes' (ID: 1)
+        setSelectedRows([1]);
+      }
+    } else {
+      // If no rows parameter in URL, default to showing only 'totalRoutes' (ID: 1)
+      setSelectedRows([1]);
     }
 
     if (hasFilters) {
@@ -571,13 +654,9 @@ const ComparePage = () => {
           onProviderSelect={handleProviderSelect}
           onViewSelect={handleViewSelect}
           onVirtualizeViewSelect={handleVirtualizeViewSelect}
-          activeProvider={provider}
-          activeView={view}
-          virtualizeView={view === 'virtualize' ? searchParams.get('tab') || 'popular-routes' : ''}
         />
       </div>
       
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top padding to account for fixed header */}
         <div className="pt-16">
@@ -643,20 +722,28 @@ const ComparePage = () => {
                   value={selectedFroms}
                   onChange={(e) => setSelectedFroms(e.value)}
                   options={useMemo(() => {
-                    const allOptions = getFieldSuggestions('From').map(v => ({ label: v, value: v }));
-                    return getSortedOptions(allOptions, selectedFroms);
-                  }, [data, selectedFroms])}
+                    // Combine existing selections with search results
+                    const existingOptions = selectedFroms.map(v => ({ label: v, value: v }));
+                    const suggestionOptions = fromSuggestions
+                      .filter(s => !selectedFroms.includes(s.origin))
+                      .map(s => ({ label: s.origin, value: s.origin }));
+                    return [...existingOptions, ...suggestionOptions];
+                  }, [selectedFroms, fromSuggestions])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
                   placeholder={selectedFroms.length > 3 
                     ? `${selectedFroms.slice(0, 3).join(' ')} ...` 
                     : selectedFroms.join(' ') || 'Departure Country'}
-                  selectedItemsLabel="{0} items selected"
+                  selectedItemsLabel="{0} origins selected"
                   className="w-full text-sm"
                   filter
+                  onFilter={onFromFilter}
+                  filterBy="label"
                   showSelectAll
                   maxSelectedLabels={3}
+                  loading={isLoadingFrom}
+                  emptyFilterMessage="No origins found"
                 />
               </div>
 
@@ -665,20 +752,28 @@ const ComparePage = () => {
                   value={selectedTos}
                   onChange={(e) => setSelectedTos(e.value)}
                   options={useMemo(() => {
-                    const allOptions = getFieldSuggestions('To').map(v => ({ label: v, value: v }));
-                    return getSortedOptions(allOptions, selectedTos);
-                  }, [data, selectedTos])}
+                    // Combine existing selections with search results
+                    const existingOptions = selectedTos.map(v => ({ label: v, value: v }));
+                    const suggestionOptions = toSuggestions
+                      .filter(s => !selectedTos.includes(s.destination))
+                      .map(s => ({ label: s.destination, value: s.destination }));
+                    return [...existingOptions, ...suggestionOptions];
+                  }, [selectedTos, toSuggestions])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
                   placeholder={selectedTos.length > 3 
                     ? `${selectedTos.slice(0, 3).join(' ')} ...` 
                     : selectedTos.join(' ') || 'Arrival Country'}
-                  selectedItemsLabel="{0} items selected"
+                  selectedItemsLabel="{0} destinations selected"
                   className="w-full text-sm"
                   filter
+                  onFilter={onToFilter}
+                  filterBy="label"
                   showSelectAll
                   maxSelectedLabels={3}
+                  loading={isLoadingTo}
+                  emptyFilterMessage="No destinations found"
                 />
               </div>
 

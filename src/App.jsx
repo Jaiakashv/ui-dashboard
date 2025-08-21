@@ -168,11 +168,6 @@ function AppContent() {
   };
 
   useEffect(() => {
-    // Pass the current lazyState to loadData
-    loadData({ ...lazyState });
-  }, []);
-
-  useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const view = searchParams.get('view');
     const provider = searchParams.get('provider');
@@ -198,9 +193,16 @@ function AppContent() {
     }
   }, [location.search, location.pathname, navigate]);
 
+  // Load data when the component mounts or when activeView/virtualizeView changes
+  // Skip loading data if we're on the Compare page
   useEffect(() => {
-    loadData();
-  }, [activeProvider]);
+    if (location.pathname !== '/compare') {
+      // Only load data if we don't have any data yet or if the view has changed
+      if (tableData.length === 0 || (activeView === 'virtualize' && virtualizeView)) {
+        loadData({ ...lazyState });
+      }
+    }
+  }, [activeView, virtualizeView, location.pathname]);
 
   const renderContent = () => {
     if (activeView === 'virtualize') {

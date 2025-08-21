@@ -13,8 +13,13 @@ const RouteStatistics = ({ stats = {}, loading = false, error = null, selectedMe
   };
 
   // Format value based on its type
-  const formatValue = (value, isCurrency) => {
+  const formatValue = (value, isCurrency, isCheapestCarriers = false) => {
     if (value === null || value === undefined || value === '') return 'N/A';
+    if (isCheapestCarriers && Array.isArray(value)) {
+      return value.length > 0 
+        ? value.map(op => op.trim()).join(', ')
+        : 'N/A';
+    }
     if (Array.isArray(value)) return value.join(', ');
     return isCurrency ? formatCurrency(value) : value;
   };
@@ -117,6 +122,21 @@ const RouteStatistics = ({ stats = {}, loading = false, error = null, selectedMe
                   </span>
                 ))}
               </div>
+            ) : selectedMetric === 'cheapestCarriers' ? (
+              <div className="flex flex-wrap gap-2">
+                {Array.isArray(selectedData.value) ? (
+                  selectedData.value.map((operator, i) => (
+                    <span 
+                      key={i}
+                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                    >
+                      {operator.trim()}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-gray-500">No data available</span>
+                )}
+              </div>
             ) : selectedData.isCurrency ? (
               <div className="text-2xl font-semibold">
                 {formatCurrency(selectedData.value)}
@@ -181,7 +201,9 @@ const RouteStatistics = ({ stats = {}, loading = false, error = null, selectedMe
                   {item.label}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
-                  {formatValue(item.value, item.isCurrency)}
+                  {item.label === 'Cheapest Carriers' 
+                    ? formatValue(item.value, false, true) 
+                    : formatValue(item.value, item.isCurrency)}
                 </td>
               </tr>
             ))}
