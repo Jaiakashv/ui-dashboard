@@ -14,88 +14,323 @@ const CompareTable = ({
   loadingMetrics = {}
 }) => {
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({});
+  const [stats, setStats] = useState({
+    '12go': {},
+    'bookaway': {}
+  });
   const [error, setError] = useState(null);
   const { getCachedData, setCachedData } = useStatsCache();
   const abortControllerRef = useRef(null);
 
-  const generateCacheKey = useCallback(() => {
+  const generateCacheKey = useCallback((provider) => {
     const params = new URLSearchParams();
     if (selectedFroms?.length === 1) params.set('from', selectedFroms[0]);
     if (selectedTos?.length === 1) params.set('to', selectedTos[0]);
     if (selectedTransportTypes?.length === 1) params.set('transportType', selectedTransportTypes[0]);
-    return `stats_${params.toString()}`;
+    return `stats_${provider}_${params.toString()}`;
   }, [selectedFroms, selectedTos, selectedTransportTypes]);
 
-  const fetchStats = useCallback(async () => {
-    const cacheKey = generateCacheKey();
+  const fetchProviderStats = async (provider) => {
+    const cacheKey = generateCacheKey(provider);
     const cachedData = getCachedData(cacheKey);
+    
+    try {
+      if (cachedData) {
+        return { [provider]: cachedData };
+      }
+
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (selectedFroms?.length === 1) params.set('from', selectedFroms[0]);
+      if (selectedTos?.length === 1) params.set('to', selectedTos[0]);
+      if (selectedTransportTypes?.length === 1) params.set('transportType', selectedTransportTypes[0]);
+
+      // Fetch transport types
+      const transportTypesResponse = await fetch(`${API_BASE_URL}/api/transport-types`, { 
+        signal: abortControllerRef.current?.signal 
+      });
+
+      if (!transportTypesResponse.ok) {
+        throw new Error(`HTTP error! status: ${transportTypesResponse.status}`);
+      }
+
+      const transportTypesData = await transportTypesResponse.json();
+      const transportTypes = transportTypesData[provider.toLowerCase()]?.routes || '';
+
+      // Fetch unique routes
+      const uniqueRoutesResponse = await fetch(`${API_BASE_URL}/api/metrics/unique-routes?${params}`, { 
+        signal: abortControllerRef.current?.signal 
+      });
+
+      if (!uniqueRoutesResponse.ok) {
+        throw new Error(`HTTP error! status: ${uniqueRoutesResponse.status}`);
+      }
+
+      const uniqueRoutesData = await uniqueRoutesResponse.json();
+      const uniqueRoutesProviderData = uniqueRoutesData[provider] || {};
+
+      // Fetch lowest price
+      const lowestPriceResponse = await fetch(`${API_BASE_URL}/api/metrics/lowest-price?${params}`, { 
+        signal: abortControllerRef.current?.signal 
+      });
+
+      if (!lowestPriceResponse.ok) {
+        throw new Error(`HTTP error! status: ${lowestPriceResponse.status}`);
+      }
+
+      const lowestPriceData = await lowestPriceResponse.json();
+      const lowestPriceProviderData = lowestPriceData[provider] || {};
+      
+      console.log('Lowest price API response:', lowestPriceData);
+      console.log(`Lowest price for ${provider}:`, lowestPriceProviderData);
+      
+      // Ensure we have a valid price, convert to string with 2 decimal places if it's a number
+      let lowestPrice = '0.00';
+      if (lowestPriceProviderData.lowest_price !== undefined && lowestPriceProviderData.lowest_price !== null) {
+        const price = parseFloat(lowestPriceProviderData.lowest_price);
+        lowestPrice = isNaN(price) ? '0.00' : price.toFixed(2);
+      }
+      
+      console.log(`Formatted lowest price for ${provider}:`, lowestPrice);
+      
+      // Map the responses to match the expected stats structure
+      const result = {
+        totalRoutes: uniqueRoutesProviderData.unique_routes || 0,
+        lowestPrice: lowestPrice,
+        highestPrice: '0.00', // Will be updated when we implement highest price endpoint
+        uniqueProviders: uniqueRoutesProviderData.sample_data?.length || 0,
+        cheapestCarriers: [],
+        transportTypes: transportTypes,
+        sample_data: uniqueRoutesProviderData.sample_data || []
+      };
+      
+      console.log(`Fetched stats for ${provider}:`, result);
+      setCachedData(cacheKey, result);
+      return { [provider]: result };
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error(`Error fetching ${provider} stats:`, err);
+        return { [provider]: null, error: err.message };
+      }
+      return { [provider]: null };
+    }
+  };
+
+  const fetchStats = useCallback(async () => {
+    // Don't fetch if no metrics are selected
+    if (selectedMetrics.length === 0) return;
     
     // Abort any in-progress fetch
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    abortControllerRef.current = new AbortController();
-
-    // Use cached data if available and not stale
-    if (cachedData) {
-      setStats(cachedData);
-      setLoading(false);
-      return;
-    }
+    
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     try {
       setLoading(true);
       setError(null);
       
+      // Build query parameters
       const params = new URLSearchParams();
-      if (selectedFroms?.length === 1) params.append('from', selectedFroms[0]);
-      if (selectedTos?.length === 1) params.append('to', selectedTos[0]);
-      if (selectedTransportTypes?.length === 1) params.append('transportType', selectedTransportTypes[0]);
+      if (selectedFroms?.length === 1) params.set('from', selectedFroms[0]);
+      if (selectedTos?.length === 1) params.set('to', selectedTos[0]);
+      if (selectedTransportTypes?.length === 1) params.set('transportType', selectedTransportTypes[0]);
       
-      const url = `${API_BASE_URL}/api/stats/routes?${params.toString()}`;
-      const response = await fetch(url, {
-        signal: abortControllerRef.current.signal,
-        headers: {
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
+      console.log('Fetching stats with params:', params.toString());
+      
+      // Only fetch what's needed based on selected metrics
+      const fetchPromises = [];
+      
+      // Always fetch routes data as it's used for multiple metrics
+      const routesPromise = fetch(`${API_BASE_URL}/api/metrics/unique-routes?${params}`, {
+        signal: controller.signal,
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
       });
+      fetchPromises.push(routesPromise);
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Only fetch lowest price if the metric is selected
+      let lowestPricePromise = Promise.resolve({ ok: true, json: () => ({}) });
+      if (selectedMetrics.includes('lowestPrice')) {
+        lowestPricePromise = fetch(`${API_BASE_URL}/api/metrics/lowest-price?${params}`, {
+          signal: controller.signal,
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
+      }
+      fetchPromises.push(lowestPricePromise);
+      
+      // Only fetch highest price if the metric is selected
+      let highestPricePromise = Promise.resolve({ ok: true, json: () => ({}) });
+      if (selectedMetrics.includes('highestPrice')) {
+        highestPricePromise = fetch(`${API_BASE_URL}/api/metrics/highest-price?${params}`, {
+          signal: controller.signal,
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
+      }
+      fetchPromises.push(highestPricePromise);
+      
+      // Only fetch unique providers if the metric is selected
+      let uniqueProvidersPromise = Promise.resolve({ ok: true, json: () => ({}) });
+      if (selectedMetrics.includes('uniqueProviders')) {
+        uniqueProvidersPromise = fetch(`${API_BASE_URL}/api/metrics/unique-providers?${params}`, {
+          signal: controller.signal,
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
+      }
+      fetchPromises.push(uniqueProvidersPromise);
+      
+      // Only fetch cheapest carriers if the metric is selected
+      let cheapestCarriersPromise = Promise.resolve({ ok: true, json: () => ({}) });
+      if (selectedMetrics.includes('cheapestCarriers')) {
+        cheapestCarriersPromise = fetch(`${API_BASE_URL}/api/metrics/cheapest-carriers?${params}`, {
+          signal: controller.signal,
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
+      }
+      fetchPromises.push(cheapestCarriersPromise);
+      
+      // Only fetch transport types if the metric is selected
+      let transportTypesPromise = Promise.resolve({ ok: true, json: () => ({}) });
+      if (selectedMetrics.includes('transportTypes')) {
+        transportTypesPromise = fetch(`${API_BASE_URL}/api/transport-types`, {
+          signal: controller.signal,
+          headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+        });
+      }
+      fetchPromises.push(transportTypesPromise);
+      
+      // Execute only the necessary API calls
+      const [
+        routesResponse, 
+        lowestPriceResponse, 
+        highestPriceResponse, 
+        uniqueProvidersResponse,
+        cheapestCarriersResponse,
+        transportTypesResponse
+      ] = await Promise.all(fetchPromises);
+
+      // Check responses and parse JSON
+      const routesData = await routesResponse.json();
+      let lowestPriceData = {};
+      let highestPriceData = {};
+      let uniqueProvidersData = {};
+      let cheapestCarriersData = {};
+      let transportTypesData = {};
+      
+      // Process transport types response
+      if (selectedMetrics.includes('transportTypes') && !transportTypesResponse.ok) {
+        console.error('Error fetching transport types:', await transportTypesResponse.text());
+        // Don't throw error, we'll just show N/A for this metric
+      } else if (selectedMetrics.includes('transportTypes')) {
+        transportTypesData = await transportTypesResponse.json();
+        console.log('Transport types data:', transportTypesData);
       }
       
-      const result = await response.json();
+      if (selectedMetrics.includes('lowestPrice') && !lowestPriceResponse.ok) {
+        throw new Error(`Error fetching lowest price: ${lowestPriceResponse.status}`);
+      } else if (selectedMetrics.includes('lowestPrice')) {
+        lowestPriceData = await lowestPriceResponse.json();
+      }
       
-      // Only update state if component is still mounted
-      setCachedData(cacheKey, result);
-      setStats(result);
+      if (selectedMetrics.includes('highestPrice') && !highestPriceResponse.ok) {
+        throw new Error(`Error fetching highest price: ${highestPriceResponse.status}`);
+      } else if (selectedMetrics.includes('highestPrice')) {
+        highestPriceData = await highestPriceResponse.json();
+      }
+      
+      if (selectedMetrics.includes('uniqueProviders') && !uniqueProvidersResponse.ok) {
+        console.error('Error fetching unique providers:', await uniqueProvidersResponse.text());
+        // Don't throw error, we'll just show N/A for this metric
+      } else if (selectedMetrics.includes('uniqueProviders')) {
+        uniqueProvidersData = await uniqueProvidersResponse.json();
+        console.log('Unique providers data:', uniqueProvidersData);
+      }
+      
+      if (selectedMetrics.includes('cheapestCarriers') && !cheapestCarriersResponse.ok) {
+        console.error('Error fetching cheapest carriers:', await cheapestCarriersResponse.text());
+        // Don't throw error, we'll just show N/A for this metric
+      } else if (selectedMetrics.includes('cheapestCarriers')) {
+        cheapestCarriersData = await cheapestCarriersResponse.json();
+        console.log('Cheapest carriers data:', cheapestCarriersData);
+      }
+      
+      console.log('Routes data:', routesData);
+      console.log('Lowest price data:', lowestPriceData);
+      console.log('Highest price data:', highestPriceData);
+      
+      // Only update state if the request wasn't aborted
+      if (!controller.signal.aborted) {
+        // Process the data for both providers
+        const combinedStats = {
+          '12go': {
+            totalRoutes: routesData['12go']?.unique_routes || 0,
+            meanPrice: '0.00',
+            lowestPrice: selectedMetrics.includes('lowestPrice') ? (lowestPriceData['12go']?.lowest_price?.toString() || 'N/A') : 'N/A',
+            highestPrice: selectedMetrics.includes('highestPrice') ? (highestPriceData['12go']?.highest_price?.toString() || 'N/A') : 'N/A',
+            medianPrice: '0.00',
+            standardDeviation: '0.00',
+            uniqueProviders: selectedMetrics.includes('uniqueProviders') ? (uniqueProvidersData['12go']?.unique_providers || 'N/A') : 'N/A',
+            cheapestCarriers: selectedMetrics.includes('cheapestCarriers') ? (cheapestCarriersData['12go']?.carriers || []) : [],
+            transportTypes: selectedMetrics.includes('transportTypes') ? (transportTypesData['12go']?.routes || 'N/A') : 'N/A',
+            sample_data: routesData['12go']?.sample_data || []
+          },
+          'bookaway': {
+            totalRoutes: routesData.bookaway?.unique_routes || 0,
+            meanPrice: '0.00',
+            lowestPrice: selectedMetrics.includes('lowestPrice') ? (lowestPriceData.bookaway?.lowest_price?.toString() || 'N/A') : 'N/A',
+            highestPrice: selectedMetrics.includes('highestPrice') ? (highestPriceData.bookaway?.highest_price?.toString() || 'N/A') : 'N/A',
+            medianPrice: '0.00',
+            standardDeviation: '0.00',
+            uniqueProviders: selectedMetrics.includes('uniqueProviders') ? (uniqueProvidersData.bookaway?.unique_providers || 'N/A') : 'N/A',
+            cheapestCarriers: selectedMetrics.includes('cheapestCarriers') ? (cheapestCarriersData.bookaway?.carriers || []) : [],
+            transportTypes: selectedMetrics.includes('transportTypes') ? (transportTypesData['bookaway']?.routes || 'N/A') : 'N/A',
+            sample_data: routesData.bookaway?.sample_data || []
+          }
+        };
+        
+        console.log('Processed combined stats:', combinedStats);
+        setStats(combinedStats);
+        
+        // Update cache for each provider
+        if (routesData['12go']) setCachedData(generateCacheKey('12go'), combinedStats['12go']);
+        if (routesData.bookaway) setCachedData(generateCacheKey('bookaway'), combinedStats['bookaway']);
+      }
+      
     } catch (err) {
-      if (err.name !== 'AbortError') {
+      if (err.name !== 'AbortError' && !controller.signal.aborted) {
         console.error('Error fetching stats:', err);
-        setError('Failed to load statistics. Please try again later.');
+        setError(`Failed to load statistics: ${err.message}. Please try again later.`);
       }
     } finally {
-      if (abortControllerRef.current?.signal?.aborted === false) {
+      if (!controller.signal.aborted) {
         setLoading(false);
       }
     }
-  }, [generateCacheKey, getCachedData, setCachedData, selectedFroms, selectedTos, selectedTransportTypes]);
+  }, [selectedMetrics.length, selectedFroms, selectedTos, selectedTransportTypes, generateCacheKey, setCachedData]);
 
   // Debounce and fetch data
   useEffect(() => {
     const timer = setTimeout(() => {
+      console.log('Triggering fetchStats with params:', {
+        selectedMetrics,
+        selectedFroms,
+        selectedTos,
+        selectedTransportTypes
+      });
       fetchStats();
     }, DEBOUNCE_DELAY);
     
     return () => {
       clearTimeout(timer);
       if (abortControllerRef.current) {
+        console.log('Cleaning up previous fetch');
         abortControllerRef.current.abort();
       }
     };
-  }, [fetchStats]);
+    // We're explicitly listing all dependencies here to prevent unnecessary re-renders
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMetrics, selectedFroms, selectedTos, selectedTransportTypes]);
 
   // Render a single table with all selected metrics
   const renderMetricsTable = () => {
@@ -135,6 +370,8 @@ const CompareTable = ({
         </div>
       );
     }
+    
+    console.log('Rendering metrics table with stats:', stats);
 
     // Format currency
     const formatCurrency = (value) => {
@@ -158,57 +395,60 @@ const CompareTable = ({
     const allMetrics = {
       'totalRoutes': { 
         label: 'Unique Routes', 
-        value: stats?.totalRoutes, 
         isCurrency: false,
-        isLoading: loadingMetrics['totalRoutes']
+        isLoading: loadingMetrics['totalRoutes'],
+        getValue: (provider) => stats[provider]?.totalRoutes || 0 
       },
       'meanPrice': { 
         label: 'Mean Price', 
-        value: stats?.meanPrice, 
         isCurrency: true,
-        isLoading: loadingMetrics['meanPrice']
+        isLoading: loadingMetrics['meanPrice'],
+        getValue: (provider) => stats[provider]?.meanPrice || '0.00'
       },
       'lowestPrice': { 
         label: 'Lowest Price', 
-        value: stats?.lowestPrice, 
         isCurrency: true,
-        isLoading: loadingMetrics['lowestPrice']
+        isLoading: loadingMetrics['lowestPrice'],
+        getValue: (provider) => stats[provider]?.lowestPrice || '0.00'
       },
       'highestPrice': { 
         label: 'Highest Price', 
-        value: stats?.highestPrice, 
         isCurrency: true,
-        isLoading: loadingMetrics['highestPrice']
+        isLoading: loadingMetrics['highestPrice'],
+        getValue: (provider) => stats[provider]?.highestPrice || '0.00'
       },
       'medianPrice': { 
         label: 'Median Price', 
-        value: stats?.medianPrice, 
         isCurrency: true,
-        isLoading: loadingMetrics['medianPrice']
+        isLoading: loadingMetrics['medianPrice'],
+        getValue: (provider) => stats[provider]?.medianPrice || '0.00'
       },
       'standardDeviation': { 
         label: 'Price Standard Deviation', 
-        value: stats?.standardDeviation, 
         isCurrency: true,
-        isLoading: loadingMetrics['standardDeviation']
+        isLoading: loadingMetrics['standardDeviation'],
+        getValue: (provider) => stats[provider]?.standardDeviation || '0.00'
       },
       'uniqueProviders': { 
         label: 'Number of Unique Providers', 
-        value: stats?.uniqueProviders, 
         isCurrency: false,
-        isLoading: loadingMetrics['uniqueProviders']
+        isLoading: loadingMetrics['uniqueProviders'],
+        getValue: (provider) => stats[provider]?.uniqueProviders || 0
       },
       'cheapestCarriers': { 
-        label: 'Cheapest Carriers', 
-        value: stats?.cheapestCarriers, 
+        label: 'Cheapest Carrier', 
         isCurrency: false,
-        isLoading: loadingMetrics['cheapestCarriers']
+        isLoading: loadingMetrics['cheapestCarriers'],
+        getValue: (provider) => {
+          const carriers = stats[provider]?.cheapestCarriers || [];
+          return carriers.length > 0 ? carriers[0] : 'N/A';
+        }
       },
-      'routes': { 
-        label: 'Available Transport Types', 
-        value: stats?.routes, 
+      'transportTypes': {
+        label: 'Available Transport Types',
         isCurrency: false,
-        isLoading: false // Routes is a static metric
+        isLoading: loadingMetrics['transportTypes'] || false,
+        getValue: (provider) => stats[provider]?.transportTypes || 'N/A'
       }
     };
     
@@ -219,69 +459,101 @@ const CompareTable = ({
       }
     };
 
-    // Filter the metrics based on what's selected
-    const tableData = selectedMetrics
-      .map(metric => allMetrics[metric])
-      .filter(Boolean);
-
+    // Filter the metrics based on what's selected and ensure all required properties exist
+    const tableData = selectedMetrics.map(metric => ({
+      ...allMetrics[metric],
+      key: metric,
+      label: allMetrics[metric]?.label || metric,
+      isLoading: allMetrics[metric]?.isLoading || false,
+      isCurrency: allMetrics[metric]?.isCurrency || false,
+      getValue: allMetrics[metric]?.getValue || ((provider) => stats[provider]?.[metric] || 'N/A')
+    }));
+    
     return (
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        {/* Header with source */}
-        <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-          <div className="flex items-center">
-            <span className="text-sm font-medium text-gray-500">Source:</span>
-            <span className="ml-2 text-sm font-medium text-gray-900">12go</span>
-          </div>
-          {/* <div className="text-xs text-gray-500">
-            {new Date().toLocaleDateString('en-US', {
-              year: 'numeric',
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-          </div> */}
-        </div>
-        
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Metric
-                </th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Value
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {tableData.map((item, index) => (
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Metric
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                12Go
+                {stats['12go']?.sample_data?.length > 0 && (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                    {stats['12go'].sample_data.length} routes
+                  </span>
+                )}
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Bookaway
+                {stats.bookaway?.sample_data?.length > 0 && (
+                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                    {stats.bookaway.sample_data.length} routes
+                  </span>
+                )}
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {tableData.map((metric, index) => {
+              const isClickable = onMetricClick && !metric.isLoading;
+              const value12go = metric.getValue ? metric.getValue('12go') : (stats['12go']?.[metric.key] ?? 'N/A');
+              const valueBookaway = metric.getValue ? metric.getValue('bookaway') : (stats.bookaway?.[metric.key] ?? 'N/A');
+              
+              return (
                 <tr 
-                key={item.label}
-                className="hover:bg-gray-50 cursor-pointer transition-colors"
-                onClick={() => handleMetricClick(Object.keys(allMetrics).find(key => allMetrics[key].label === item.label))}
-              >
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  <div className="flex items-center">
-                    {item.label}
-                    {item.isLoading && (
-                      <svg className="animate-spin -mr-1 ml-2 h-4 w-4 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
+                  key={index}
+                  className={`hover:bg-gray-50 ${isClickable ? 'cursor-pointer' : ''}`}
+                  onClick={() => isClickable && handleMetricClick(metric.label)}
+                >
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {metric.label}
+                    {metric.isLoading && (
+                      <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        Loading...
+                      </span>
                     )}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatValue(value12go, metric.isCurrency)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {formatValue(valueBookaway, metric.isCurrency)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        
+        {/* Display sample data if available */}
+        {(stats['12go']?.sample_data?.length > 0 || stats.bookaway?.sample_data?.length > 0) && (
+          <div className="border-t border-gray-200 p-4">
+            <h3 className="text-sm font-medium text-gray-900 mb-2">Sample Routes</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {['12go', 'bookaway'].map((provider) => (
+                stats[provider]?.sample_data?.length > 0 && (
+                  <div key={provider} className="bg-gray-50 p-3 rounded-lg">
+                    <h4 className="text-xs font-medium text-gray-700 mb-2">{provider === '12go' ? '12Go' : 'Bookaway'} Routes</h4>
+                    <div className="space-y-2">
+                      {stats[provider].sample_data.slice(0, 3).map((route, idx) => (
+                        <div key={idx} className="text-xs text-gray-600">
+                          {route.origin} → {route.destination}: {route.count} routes
+                        </div>
+                      ))}
+                      {stats[provider].sample_data.length > 3 && (
+                        <div className="text-xs text-gray-500">
+                          +{stats[provider].sample_data.length - 3} more...
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-gray-500">
-                  {item.isLoading ? 'Loading...' : formatValue(item.value, item.isCurrency)}
-                </td>
-              </tr>
+                )
               ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };

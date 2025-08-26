@@ -30,18 +30,15 @@ const sectionItems = {
   ],
   rows: [
     { id: 1, name: 'Unique Routes' },
-    { id: 2, name: 'Mean Price Average' },
     { id: 4, name: 'Lowest Price' },
     { id: 5, name: 'Highest Price' },
-    { id: 6, name: 'Median Price' },
-    { id: 7, name: 'Standard Deviation' },
     { id: 8, name: 'No of Unique Providers' },
     { id: 9, name: 'Cheapest Carriers' },
-    { id: 10, name: 'Routes (bus, train, etc.)' }
+    { id: 11, name: 'Available Transport Types' }
   ]
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
 
 const ComparePage = () => {
   const navigate = useNavigate();
@@ -59,13 +56,83 @@ const ComparePage = () => {
   const [data, setData] = useState([]);
   const [loadingMetrics, setLoadingMetrics] = useState({});
 
-  // Fetch individual stat
+  // Fetch provider stats
+  const fetchProviderStats = async () => {
+    try {
+      console.log('Fetching unique routes from:', `${API_BASE_URL}/api/metrics/unique-routes`);
+      const response = await axios.get(`${API_BASE_URL}/api/metrics/unique-routes`, {
+        timeout: 10000, // 10 second timeout
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      
+      console.log('Received response from unique-routes endpoint:', response.data);
+      
+      if (!response.data) {
+        console.error('Empty response from unique-routes endpoint');
+        return null;
+      }
+      
+      const data = response.data;
+      const result = {
+        '12go': {
+          unique_routes: data['12go']?.unique_routes || 0,
+          table_exists: data['12go']?.table_exists || false,
+          sample_data: data['12go']?.sample_data || []
+        },
+        'bookaway': {
+          unique_routes: data.bookaway?.unique_routes || 0,
+          table_exists: data.bookaway?.table_exists || false,
+          sample_data: data.bookaway?.sample_data || []
+        },
+        timestamp: data.timestamp || new Date().toISOString()
+      };
+      
+      console.log('Processed provider stats:', result);
+      return result;
+      
+    } catch (err) {
+      console.error('Error fetching provider stats:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        config: {
+          url: err.config?.url,
+          method: err.config?.method,
+          timeout: err.config?.timeout
+        }
+      });
+      return null;
+    }
+  };
+
+  // Fetch individual stat (kept for backward compatibility)
   const fetchStat = async (endpoint) => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/stats/routes/${endpoint}`);
+      const cleanEndpoint = endpoint.endsWith('?') ? endpoint.slice(0, -1) : endpoint;
+      const hasParams = cleanEndpoint.includes('?');
+      
+      // Handle unique routes specially
+      if (cleanEndpoint.startsWith('unique-routes')) {
+        const provider = cleanEndpoint.includes('provider=') 
+          ? cleanEndpoint.split('provider=')[1] 
+          : '12go';
+        const response = await axios.get(`${API_BASE_URL}/api/metrics/unique-routes?provider=${provider}`);
+        return { count: response.data.unique_routes || 0 };
+      }
+      
+      // Fall back to old endpoint for other stats
+      const url = `${API_BASE_URL}/api/stats/routes/${cleanEndpoint}${hasParams ? '&' : '?'}provider=12go`;
+      const response = await axios.get(url);
       return response.data;
     } catch (err) {
       console.error(`Error fetching ${endpoint}:`, err);
+      // Return default values based on the endpoint
+      if (endpoint.includes('unique-routes')) {
+        return { count: 0 };
+      }
       return null;
     }
   };
@@ -73,9 +140,39 @@ const ComparePage = () => {
   // Fetch route statistics
   const fetchRouteStats = useCallback(async (metric = null) => {
     try {
+      console.log('Starting to fetch route stats...');
       setLoading(true);
       
-      // Create query params
+      // Fetch stats from the new endpoints
+      console.log('Fetching provider stats...');
+      const providerStats = await fetchProviderStats();
+      
+      if (providerStats) {
+        // Get the current provider from URL or default to '12go'
+        const currentProvider = provider || '12go';
+        const currentProviderData = providerStats[currentProvider] || {};
+        
+        const combinedStats = {
+          ...providerStats,
+          totalRoutes: currentProviderData.unique_routes || 0,
+          meanPrice: '0.00',
+          lowestPrice: '0.00',
+          highestPrice: '0.00',
+          medianPrice: '0.00',
+          standardDeviation: '0.00',
+          uniqueProviders: currentProviderData.sample_data?.length || 0,
+          cheapestCarriers: [],
+          routes: selectedTransportTypes.join(', ') || 'All',
+          sample_data: currentProviderData.sample_data || []
+        };
+        
+        console.log('Combined stats to be set:', combinedStats);
+        setStats(combinedStats);
+        setError(null);
+        return combinedStats;
+      }
+      
+      // Fallback to the old implementation if new endpoint fails
       const params = new URLSearchParams();
       if (selectedFroms.length > 0) params.append('from', selectedFroms[0]);
       if (selectedTos.length > 0) params.append('to', selectedTos[0]);
@@ -83,7 +180,6 @@ const ComparePage = () => {
       
       const queryString = params.toString();
       
-      // If a specific metric is requested, only fetch that one
       if (metric) {
         const metricEndpoint = metric.toLowerCase().replace(/\s+/g, '');
         const result = await fetchStat(`${metricEndpoint}?${queryString}`);
@@ -106,7 +202,6 @@ const ComparePage = () => {
         return updatedStats;
       }
       
-      // Otherwise fetch all stats in parallel
       const [
         total, 
         mean, 
@@ -127,7 +222,6 @@ const ComparePage = () => {
         fetchStat(`cheapestcarriers?${queryString}`)
       ]);
 
-      // Combine all stats into one object
       const combinedStats = {
         totalRoutes: total?.count || 0,
         meanPrice: mean?.mean || '0.00',
@@ -139,10 +233,6 @@ const ComparePage = () => {
         cheapestCarriers: cheapest?.carriers || [],
         routes: selectedTransportTypes.join(', ') || 'All'
       };
-
-      setStats(combinedStats);
-      setError(null);
-      return combinedStats;
     } catch (err) {
       console.error('Error fetching route statistics:', err);
       setError('Failed to load route statistics. Please try again later.');
@@ -154,12 +244,22 @@ const ComparePage = () => {
 
   // Get transformed data from stats
   const getTransformedData = useCallback((stats) => {
-    if (!stats) return [];
+    if (!stats) {
+      console.log('No stats provided to transform');
+      return [];
+    }
+    
+    // Get the current provider from URL or default to '12go'
+    const currentProvider = provider || '12go';
+    const providerData = stats[currentProvider] || {};
+    
+    console.log('Transforming data for provider:', currentProvider, 'Provider data:', providerData);
+    console.log('All stats:', stats);
     
     return [{
       id: 1,
       name: 'Unique Routes',
-      value: stats.totalRoutes || 0
+      value: providerData.unique_routes || 0
     }, {
       id: 2,
       name: 'Mean Price Average',
@@ -193,49 +293,27 @@ const ComparePage = () => {
       name: 'Routes',
       value: stats.routes || 'All'
     }];
-  }, []);
+  }, [provider]);
 
-  // Update data when stats change
+  // Update data when stats or provider changes
   useEffect(() => {
     if (stats) {
-      setData(prevData => {
-        // If we have no data yet, initialize with default values
-        if (!prevData || prevData.length === 0) {
-          return sectionItems.rows.map(row => ({
-            id: row.id,
-            name: row.name,
-            value: 'Click to load'
-          }));
-        }
-
-        // Only update the specific metric that was fetched
-        const updatedData = prevData.map(item => {
-          const statKey = item.name.toLowerCase();
-          switch (statKey) {
-            case 'unique routes':
-              return { ...item, value: stats.totalRoutes || 0 };
-            case 'mean price average':
-              return { ...item, value: stats.meanPrice || '0.00' };
-            case 'lowest price':
-              return { ...item, value: stats.lowestPrice || '0.00' };
-            case 'highest price':
-              return { ...item, value: stats.highestPrice || '0.00' };
-            case 'median price':
-              return { ...item, value: stats.medianPrice || '0.00' };
-            case 'standard deviation':
-              return { ...item, value: stats.standardDeviation || '0.00' };
-            case 'no of unique providers':
-              return { ...item, value: stats.uniqueProviders || 0 };
-            case 'cheapest carriers':
-              return { ...item, value: stats.cheapestCarriers?.join(', ') || 'N/A' };
-            case 'routes':
-              return { ...item, value: stats.routes || 'All' };
-            default:
-              return item;
-          }
-        });
-        return updatedData;
-      });
+      console.log('Stats updated, transforming data...');
+      const currentProvider = provider || '12go';
+      const providerData = stats[currentProvider] || {};
+      console.log(`Processing data for ${currentProvider}:`, providerData);
+      
+      const transformedData = getTransformedData(stats);
+      console.log('Transformed data:', transformedData);
+      
+      setData(transformedData);
+    } else {
+      // Initialize with default values if no stats yet
+      setData(sectionItems.rows.map(row => ({
+        id: row.id,
+        name: row.name,
+        value: 'Loading...'
+      })));
     }
   }, [stats]);
 
@@ -292,111 +370,505 @@ const ComparePage = () => {
     return `${y}-${m}-${d}`;
   }, []); 
 
-  const safeParseDate = (dateString) => {
+  const safeParseDate = useCallback((dateString) => {
     if (!dateString) return null;
     if (typeof dateString !== 'string') return null;
     const parts = dateString.split('-').map(Number);
     if (parts.length !== 3 || parts.some(isNaN)) return null;
     return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
-  };
+  }, []);
 
   const [selectedTimeline, setSelectedTimeline] = useState('Last 14 Days');
   const [fromSuggestions, setFromSuggestions] = useState([]);
   const [toSuggestions, setToSuggestions] = useState([]);
-  const [transportTypeSuggestions, setTransportTypeSuggestions] = useState([]);
+  const [transportTypeSuggestions, setTransportTypeSuggestions] = useState([
+    { transport_type: 'bus', label: 'Bus' },
+    { transport_type: 'ferry', label: 'Ferry' },
+    { transport_type: 'train', label: 'Train' },
+    { transport_type: 'flight', label: 'Flight' },
+    {transport_type: 'avia', label: 'Avia'}
+  ]);
   const [operatorSuggestions, setOperatorSuggestions] = useState([]);
+  const [allFilters, setAllFilters] = useState({
+    origin: [],
+    destination: [],
+    transport_type: [],
+    operator_name: []
+  });
   const [isLoadingFrom, setIsLoadingFrom] = useState(false);
   const [isLoadingTo, setIsLoadingTo] = useState(false);
   const [isLoadingTransportType, setIsLoadingTransportType] = useState(false);
   const [isLoadingOperator, setIsLoadingOperator] = useState(false);
 
-  // Fetch origin suggestions
-  const fetchFromSuggestions = async (query) => {
-    if (!query) return [];
-    setIsLoadingFrom(true);
-    try {
-      const response = await axios.get(`${API_BASE_URL}/api/trips/search?field=origin&q=${encodeURIComponent(query)}`);
-      return response.data.results || [];
-    } catch (error) {
-      console.error('Error fetching origin suggestions:', error);
-      return [];
-    } finally {
-      setIsLoadingFrom(false);
-    }
+  // Helper function to combine API results
+  const combineApiResults = (goResponse, awayResponse) => {
+    const results = [
+      ...(goResponse?.data?.results || []).map(item => ({ ...item, provider: '12go' })),
+      ...(awayResponse?.data?.results || []).map(item => ({ ...item, provider: 'bookaway' }))
+    ];
+    console.log('Combined results:', results);
+    return results;
   };
 
-  // Fetch destination suggestions
+  // Group results by a specific key and count unique routes
+  const groupResults = (results, key) => {
+    return results.reduce((acc, item) => {
+      const value = item[key];
+      if (!value) return acc; // Skip if no value for the key
+      
+      if (!acc[value]) {
+        acc[value] = {
+          [key]: value,
+          routes: new Set(),
+          providers: new Set(),
+          destinations: new Set()
+        };
+      }
+      
+      // Add unique route
+      if (item.destination && item.transport_type) {
+        acc[value].routes.add(`${item.origin}-${item.destination}-${item.transport_type}`);
+      }
+      
+      // Add provider
+      if (item.provider) {
+        acc[value].providers.add(item.provider);
+      }
+      
+      // Add unique destinations
+      if (item.destination) {
+        acc[value].destinations.add(item.destination);
+      }
+      
+      return acc;
+    }, {});
+  };
+
+  // Format grouped results into suggestion format
+  const formatGroupedResults = (groupedResults, key) => {
+    return Object.values(groupedResults)
+      .sort((a, b) => b.routes.size - a.routes.size)
+      .map(item => ({
+        [key]: item[key],
+        routes_count: item.routes.size,
+        destinations_count: item.destinations.size,
+        providers: Array.from(item.providers).join(', '),
+        label: `${item[key]} (${item.routes.size} routes, ${item.destinations.size} destinations)`,
+        value: item[key]
+      }));
+  };
+
+  // Fetch destination suggestions with routes count
   const fetchToSuggestions = async (query) => {
-    if (!query) return [];
+    // Return all destinations if no query
+    if (!query) return allFilters.destination || [];
+    
+    // Don't search for very short queries, return all matching from local filters
+    if (query.length < 2) {
+      return allFilters.destination?.filter(item => 
+        (item.destination || '').toLowerCase().includes(query.toLowerCase()) ||
+        (item.label || '').toLowerCase().includes(query.toLowerCase())
+      ) || [];
+    }
+    
     setIsLoadingTo(true);
+    
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/trips/search?field=destination&q=${encodeURIComponent(query)}`);
-      return response.data.results || [];
+      // Search in both providers
+      const [goResponse, awayResponse] = await Promise.all([
+        axios.get(`${API_BASE_URL}/api/12go/search?field=destination&q=${encodeURIComponent(query)}`),
+        axios.get(`${API_BASE_URL}/api/bookaway/search?field=destination&q=${encodeURIComponent(query)}`)
+      ]);
+
+      // Combine results from both providers
+      const results = [
+        ...(goResponse.data?.results || []).map(item => ({ ...item, provider: '12go' })),
+        ...(awayResponse.data?.results || []).map(item => ({ ...item, provider: 'bookaway' }))
+      ];
+
+      if (results.length === 0) {
+        console.log('No destination results found for query:', query);
+        return [];
+      }
+
+      // Group by destination and count unique routes
+      const groupedResults = results.reduce((acc, item) => {
+        const destination = item.destination;
+        if (!destination) return acc; // Skip if no destination
+        
+        if (!acc[destination]) {
+          acc[destination] = {
+            destination,
+            routes: new Set(),
+            providers: new Set(),
+            origins: new Set()
+          };
+        }
+        
+        // Add unique route
+        if (item.origin && item.transport_type) {
+          acc[destination].routes.add(`${item.origin}-${item.destination}-${item.transport_type}`);
+        }
+        
+        // Add provider
+        if (item.provider) {
+          acc[destination].providers.add(item.provider);
+        }
+        
+        // Add unique origins
+        if (item.origin) {
+          acc[destination].origins.add(item.origin);
+        }
+        
+        return acc;
+      }, {});
+
+      // Format the results with counts
+      const formattedResults = Object.values(groupedResults)
+        .sort((a, b) => b.routes.size - a.routes.size) // Sort by number of routes descending
+        .map(item => ({
+          destination: item.destination,
+          routes_count: item.routes.size,
+          origins_count: item.origins.size,
+          providers: Array.from(item.providers).join(', '),
+          label: `${item.destination} (${item.routes.size} routes, ${item.origins.size} origins)`,
+          value: item.destination
+        }));
+
+      console.log('Destination suggestions:', formattedResults);
+      return formattedResults;
+      
     } catch (error) {
-      console.error('Error fetching destination suggestions:', error);
+      console.error('Error fetching destination suggestions:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
       return [];
     } finally {
       setIsLoadingTo(false);
     }
   };
 
+  // Fetch origin suggestions with routes count
+  const fetchFromSuggestions = async (query) => {
+    // Return all origins if no query
+    if (!query) return allFilters.origin || [];
+    
+    // For short queries, filter local suggestions
+    if (query.length < 2) {
+      return allFilters.origin?.filter(item => 
+        (item.origin || '').toLowerCase().includes(query.toLowerCase()) ||
+        (item.label || '').toLowerCase().includes(query.toLowerCase())
+      ) || [];
+    }
+    
+    setIsLoadingFrom(true);
+    
+    try {
+      // Search in both providers
+      const [goResponse, awayResponse] = await Promise.all([
+        axios.get(`${API_BASE_URL}/api/12go/search?field=origin&q=${encodeURIComponent(query)}`),
+        axios.get(`${API_BASE_URL}/api/bookaway/search?field=origin&q=${encodeURIComponent(query)}`)
+      ]);
+      
+      // Process 12go response
+      const goResults = goResponse.data?.results || goResponse.data || [];
+      const goOrigins = Array.isArray(goResults) ? goResults : [];
+      
+      // Process Bookaway response
+      const awayResults = awayResponse.data?.results || awayResponse.data || [];
+      const awayOrigins = Array.isArray(awayResults) ? awayResults : [];
+      
+      // Combine and deduplicate origins
+      const originMap = new Map();
+      
+      // Add all origins to the map
+      [...goOrigins, ...awayOrigins].forEach(item => {
+        const origin = item.origin || item.value || item;
+        const label = item.label || origin;
+        
+        if (!originMap.has(origin)) {
+          originMap.set(origin, {
+            origin,
+            label,
+            routes: new Set(),
+            destinations: new Set(),
+            providers: new Set()
+          });
+        }
+        
+        const originData = originMap.get(origin);
+        if (item.routes_count) originData.routes.add(item.routes_count);
+        if (item.destination) originData.destinations.add(item.destination);
+        if (item.provider) originData.providers.add(item.provider);
+      });
+      
+      // Convert map to array and format results
+      const formattedResults = Array.from(originMap.values()).map(item => ({
+        ...item,
+        routes_count: item.routes.size,
+        destinations_count: item.destinations.size,
+        destinations: Array.from(item.destinations).join(', '),
+        providers: Array.from(item.providers).join(', '),
+        label: `${item.origin} (${item.routes.size} routes, ${item.destinations.size} destinations)`,
+        value: item.origin
+      }));
+      
+      console.log('Origin suggestions:', formattedResults);
+      return formattedResults;
+      
+    } catch (error) {
+      console.error('Error fetching origin suggestions:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      return [];
+    } finally {
+      setIsLoadingFrom(false);
+    }
+  };
+
   // Fetch transport type suggestions
   const fetchTransportTypeSuggestions = async (query) => {
-    if (!query) return [];
+    // Return all transport types for empty or short queries
+    if (!query || query.length < 2) {
+      return allFilters.transport_type || [];
+    }
+    
     setIsLoadingTransportType(true);
+    console.log('Fetching transport types for query:', query);
+    
     try {
       const response = await axios.get(
-        `${API_BASE_URL}/api/trips/search?field=transport_type&q=${encodeURIComponent(query)}`
+        `${API_BASE_URL}/api/12go/search?field=transport_type&q=${encodeURIComponent(query)}`,
+        { timeout: 5000 }
       );
-      return response.data.results || [];
+      
+      console.log('Transport type API response:', response.data);
+      
+      // Handle different response formats
+      const apiResults = response.data?.results || response.data || [];
+      if (!Array.isArray(apiResults)) {
+        console.error('Unexpected transport type response format:', apiResults);
+        return defaultTransportTypes;
+      }
+      
+      // Format API results and combine with default types
+      const formattedApiResults = apiResults.map(item => ({
+        transport_type: item.transport_type || item.value || item,
+        label: item.label || item.transport_type || item.value || item
+      }));
+      
+      // Combine default and API results, removing duplicates
+      const allResults = [
+        ...defaultTransportTypes,
+        ...formattedApiResults.filter(
+          apiItem => !defaultTransportTypes.some(
+            defaultItem => defaultItem.transport_type === apiItem.transport_type
+          )
+        )
+      ];
+      
+      return allResults;
+      
     } catch (error) {
-      console.error('Error fetching transport type suggestions:', error);
+      console.error('Error fetching transport type suggestions:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
       return [];
     } finally {
       setIsLoadingTransportType(false);
     }
   };
 
+  // Handle transport type filter with debouncing
+  const onTransportTypeFilter = useCallback(async (event) => {
+    const query = event.filter?.trim();
+    
+    // For empty or short queries, show all transport types
+    if (!query || query.length < 2) {
+      setTransportTypeSuggestions(allFilters.transport_type || []);
+      return;
+    }
+    
+    // First try local filter
+    const localResults = allFilters.transport_type.filter(item => 
+      item.transport_type?.toLowerCase().includes(query.toLowerCase()) ||
+      item.label?.toLowerCase().includes(query.toLowerCase())
+    );
+    
+    if (localResults.length > 0) {
+      setTransportTypeSuggestions(localResults);
+      return;
+    }
+    
+    // If no local results, try API
+    try {
+      const results = await fetchTransportTypeSuggestions(query);
+      setTransportTypeSuggestions(Array.isArray(results) ? results : (allFilters.transport_type || []));
+    } catch (error) {
+      console.error('Error in onTransportTypeFilter:', error);
+      setTransportTypeSuggestions(allFilters.transport_type || []);
+    }
+  }, [fetchTransportTypeSuggestions, allFilters.transport_type]);
+
   // Fetch operator suggestions
   const fetchOperatorSuggestions = async (query) => {
-    if (!query) return [];
+    if (!query || query.length < 2) return [];
     setIsLoadingOperator(true);
+    
     try {
+      // First try local filter
+      const localResults = filterLocalSuggestions(allFilters.operator_name, query, 'operator_name');
+      if (localResults.length > 0) return localResults;
+      
+      // Fallback to API if no local matches
       const response = await axios.get(
-        `${API_BASE_URL}/api/trips/search?field=operator_name&q=${encodeURIComponent(query)}`
+        `${API_BASE_URL}/api/12go/search?field=operator_name&q=${encodeURIComponent(query)}`,
+        { timeout: 5000 }
       );
-      return response.data.results || [];
+      
+      const results = response.data?.results || response.data || [];
+      if (!Array.isArray(results)) return [];
+      
+      return results.map(item => ({
+        operator_name: item.operator_name || item.value || item,
+        label: item.label || item.operator_name || item.value || item
+      }));
+      
     } catch (error) {
-      console.error('Error fetching operator suggestions:', error);
+      console.error('Error in fetchOperatorSuggestions:', error);
       return [];
     } finally {
       setIsLoadingOperator(false);
     }
   };
 
-  // Handle origin filter
-  const onFromFilter = async (event) => {
-    const results = await fetchFromSuggestions(event.filter);
-    setFromSuggestions(results);
-  };
+  // Handle origin filter with debouncing
+  const onFromFilter = useCallback(async (event) => {
+    const query = event.filter?.trim();
+    // Always show suggestions, even without query
+    if (!query) {
+      setFromSuggestions(allFilters.origin);
+      return;
+    }
+    
+    try {
+      const results = await fetchFromSuggestions(query);
+      setFromSuggestions(Array.isArray(results) ? results : allFilters.origin);
+    } catch (error) {
+      console.error('Error in fetchFromSuggestions:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      setFromSuggestions(allFilters.origin || []);
+    }
+  }, [fetchFromSuggestions]);
+  
+  // Handle destination filter with debouncing
+  const onToFilter = useCallback(async (event) => {
+    const query = event.filter?.trim();
+    // Always show suggestions, even without query
+    if (!query) {
+      setToSuggestions(allFilters.destination);
+      return;
+    }
+    
+    try {
+      const results = await fetchToSuggestions(query);
+      setToSuggestions(Array.isArray(results) ? results : allFilters.destination);
+    } catch (error) {
+      console.error('Error in fetchToSuggestions:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      setToSuggestions(allFilters.destination || []);
+    }
+  }, [fetchToSuggestions, allFilters.destination]);
+  
+  // Initialize filters on component mount
+  useEffect(() => {
+    const initializeFilters = async () => {
+      try {
+        const response = await axios.get(
+          `${API_BASE_URL}/api/filters`,
+          { timeout: 10000 }
+        );
+        
+        const { origin, destination, transport_type, operator_name } = response.data;
+        
+        // Update all filters state
+        setAllFilters({
+          origin: origin.split(',').filter(Boolean).map(item => ({
+            origin: item.trim(),
+            label: item.trim()
+          })),
+          destination: destination.split(',').filter(Boolean).map(item => ({
+            destination: item.trim(),
+            label: item.trim()
+          })),
+          transport_type: transport_type.split(',').filter(Boolean).map(item => ({
+            transport_type: item.trim(),
+            label: item.trim().charAt(0).toUpperCase() + item.trim().slice(1)
+          })),
+          operator_name: operator_name.split(',').filter(Boolean).map(item => ({
+            operator_name: item.trim(),
+            label: item.trim()
+          }))
+        });
+        
+        // Set initial suggestions
+        setFromSuggestions(origin.split(',').filter(Boolean).map(item => ({
+          origin: item.trim(),
+          label: item.trim()
+        })));
+        
+        // Set initial transport type suggestions
+        setTransportTypeSuggestions(transport_type.split(',').filter(Boolean).map(item => ({
+          transport_type: item.trim(),
+          label: item.trim().charAt(0).toUpperCase() + item.trim().slice(1)
+        })));
+        
+        setToSuggestions(destination.split(',').filter(Boolean).map(item => ({
+          destination: item.trim(),
+          label: item.trim()
+        })));
+        
+        setOperatorSuggestions(operator_name.split(',').filter(Boolean).map(item => ({
+          operator_name: item.trim(),
+          label: item.trim()
+        })));
+        
+      } catch (error) {
+        console.error('Error initializing filters:', error);
+      }
+    };
+    
+    initializeFilters();
+  }, []);
 
-  // Handle destination filter
-  const onToFilter = async (event) => {
-    const results = await fetchToSuggestions(event.filter);
-    setToSuggestions(results);
-  };
-
-  // Handle transport type filter
-  const onTransportTypeFilter = async (event) => {
-    const results = await fetchTransportTypeSuggestions(event.filter);
-    setTransportTypeSuggestions(results);
-  };
-
-  // Handle operator filter
-  const onOperatorFilter = async (event) => {
-    const results = await fetchOperatorSuggestions(event.filter);
-    setOperatorSuggestions(results);
-  };
+  // Handle operator filter with debouncing
+  const onOperatorFilter = useCallback(async (event) => {
+    const query = event.filter?.trim();
+    if (!query || query.length < 2) {
+      setOperatorSuggestions([]);
+      return;
+    }
+    
+    try {
+      const results = await fetchOperatorSuggestions(query);
+      setOperatorSuggestions(Array.isArray(results) ? results : []);
+    } catch (error) {
+      console.error('Error in onOperatorFilter:', error);
+      setOperatorSuggestions([]);
+    }
+  }, [fetchOperatorSuggestions]);
   const [selectedOperators, setSelectedOperators] = useState([]);
   const [customRange, setCustomRange] = useState(null);
   const [selectedDateField, setSelectedDateField] = useState('');
@@ -869,38 +1341,30 @@ const ComparePage = () => {
                   />
                 )}
               </div>
-{/* 
-              <div className="date-field min-w-[160px]">
-                <Dropdown
-                  value={selectedDateField}
-                  onChange={handleDateFieldChange}
-                  options={dateFieldOptions}
-                  optionLabel="label"
-                  optionValue="value"
-                  placeholder="Date Field"
-                  className="w-full text-sm"
-                  showClear
-                />
-              </div> */}
-
               <div className="from min-w-[150px]">
                 <MultiSelect
                   value={selectedFroms}
                   onChange={(e) => setSelectedFroms(e.value)}
                   options={useMemo(() => {
-                    // Combine existing selections with search results
-                    const existingOptions = selectedFroms.map(v => ({ label: v, value: v }));
-                    const suggestionOptions = fromSuggestions
-                      .filter(s => !selectedFroms.includes(s.origin))
-                      .map(s => ({ label: s.origin, value: s.origin }));
-                    return [...existingOptions, ...suggestionOptions];
+                    // Create options from suggestions
+                    const suggestionOptions = fromSuggestions.map(s => ({
+                      label: s.label || s.origin || 'Unknown',
+                      value: s.origin || s.value || s
+                    }));
+                    
+                    // Add any selected items that aren't in suggestions
+                    const existingOptions = selectedFroms
+                      .filter(val => !suggestionOptions.some(opt => opt.value === val))
+                      .map(val => ({ label: val, value: val }));
+                    
+                    return [...suggestionOptions, ...existingOptions];
                   }, [selectedFroms, fromSuggestions])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
-                  placeholder={selectedFroms.length > 3 
-                    ? `${selectedFroms.slice(0, 3).join(' ')} ...` 
-                    : selectedFroms.join(' ') || 'Departure Country'}
+                  placeholder={selectedFroms.length > 0 
+                    ? `${selectedFroms.length} origins selected` 
+                    : 'Search departure...'}
                   selectedItemsLabel="{0} origins selected"
                   className="w-full text-sm"
                   filter
@@ -918,19 +1382,25 @@ const ComparePage = () => {
                   value={selectedTos}
                   onChange={(e) => setSelectedTos(e.value)}
                   options={useMemo(() => {
-                    // Combine existing selections with search results
-                    const existingOptions = selectedTos.map(v => ({ label: v, value: v }));
-                    const suggestionOptions = toSuggestions
-                      .filter(s => !selectedTos.includes(s.destination))
-                      .map(s => ({ label: s.destination, value: s.destination }));
-                    return [...existingOptions, ...suggestionOptions];
+                    // Create options from suggestions
+                    const suggestionOptions = toSuggestions.map(s => ({
+                      label: s.label || s.destination || 'Unknown',
+                      value: s.destination || s.value || s
+                    }));
+                    
+                    // Add any selected items that aren't in suggestions
+                    const existingOptions = selectedTos
+                      .filter(val => !suggestionOptions.some(opt => opt.value === val))
+                      .map(val => ({ label: val, value: val }));
+                    
+                    return [...suggestionOptions, ...existingOptions];
                   }, [selectedTos, toSuggestions])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
-                  placeholder={selectedTos.length > 3 
-                    ? `${selectedTos.slice(0, 3).join(' ')} ...` 
-                    : selectedTos.join(' ') || 'Arrival Country'}
+                  placeholder={selectedTos.length > 0 
+                    ? `${selectedTos.length} destinations selected` 
+                    : 'Search destination...'}
                   selectedItemsLabel="{0} destinations selected"
                   className="w-full text-sm"
                   filter
@@ -943,24 +1413,30 @@ const ComparePage = () => {
                 />
               </div>
 
-              <div className="transport-type min-w-[160px]">
+              <div className="transport-type min-w-[150px]">
                 <MultiSelect
                   value={selectedTransportTypes}
                   onChange={(e) => setSelectedTransportTypes(e.value)}
                   options={useMemo(() => {
-                    // Combine existing selections with search results
-                    const existingOptions = selectedTransportTypes.map(v => ({ label: v, value: v }));
-                    const suggestionOptions = transportTypeSuggestions
-                      .filter(s => !selectedTransportTypes.includes(s.transport_type))
-                      .map(s => ({ label: s.transport_type, value: s.transport_type }));
-                    return [...existingOptions, ...suggestionOptions];
+                    // Create options from suggestions
+                    const suggestionOptions = transportTypeSuggestions.map(s => ({
+                      label: s.label || s.transport_type || s,
+                      value: s.transport_type || s.value || s
+                    }));
+                    
+                    // Add any selected items that aren't in suggestions
+                    const existingOptions = selectedTransportTypes
+                      .filter(val => !suggestionOptions.some(opt => opt.value === val))
+                      .map(val => ({ label: val, value: val }));
+                    
+                    return [...suggestionOptions, ...existingOptions];
                   }, [selectedTransportTypes, transportTypeSuggestions])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
-                  placeholder={selectedTransportTypes.length > 3 
-                    ? `${selectedTransportTypes.slice(0, 3).join(' ')} ...` 
-                    : selectedTransportTypes.join(' ') || 'Travel Mode'}
+                  placeholder={selectedTransportTypes.length > 0 
+                    ? `${selectedTransportTypes.length} transport types selected` 
+                    : 'Search transport type...'}
                   selectedItemsLabel="{0} transport types selected"
                   className="w-full text-sm"
                   filter
@@ -978,19 +1454,25 @@ const ComparePage = () => {
                   value={selectedOperators}
                   onChange={(e) => setSelectedOperators(e.value)}
                   options={useMemo(() => {
-                    // Combine existing selections with search results
-                    const existingOptions = selectedOperators.map(v => ({ label: v, value: v }));
-                    const suggestionOptions = operatorSuggestions
-                      .filter(s => !selectedOperators.includes(s.operator_name))
-                      .map(s => ({ label: s.operator_name, value: s.operator_name }));
-                    return [...existingOptions, ...suggestionOptions];
+                    // Create options from suggestions
+                    const suggestionOptions = operatorSuggestions.map(s => ({
+                      label: s.label || s.operator_name || s,
+                      value: s.operator_name || s.value || s
+                    }));
+                    
+                    // Add any selected items that aren't in suggestions
+                    const existingOptions = selectedOperators
+                      .filter(val => !suggestionOptions.some(opt => opt.value === val))
+                      .map(val => ({ label: val, value: val }));
+                    
+                    return [...suggestionOptions, ...existingOptions];
                   }, [selectedOperators, operatorSuggestions])}
                   optionLabel="label"
                   optionValue="value"
                   display="chip"
-                  placeholder={selectedOperators.length > 3 
-                    ? `${selectedOperators.slice(0, 3).join(' ')} ...` 
-                    : selectedOperators.join(' ') || 'Operator'}
+                  placeholder={selectedOperators.length > 0 
+                    ? `${selectedOperators.length} operators selected` 
+                    : 'Search operators...'}
                   selectedItemsLabel="{0} operators selected"
                   className="w-full text-sm"
                   filter

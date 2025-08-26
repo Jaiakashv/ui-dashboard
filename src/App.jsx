@@ -60,7 +60,23 @@ function AppContent() {
   const toggleSidebar = () => setSidebarVisible(!sidebarVisible);
 
   const handleMenuItemClick = (provider) => {
+    console.log('Provider changed to:', provider);
     setActiveProvider(provider);
+    // Update URL to reflect the new provider
+    const searchParams = new URLSearchParams(window.location.search);
+    searchParams.set('provider', provider);
+    searchParams.set('view', 'data');
+    const newUrl = `${window.location.pathname}?${searchParams.toString()}`;
+    window.history.pushState({}, '', newUrl);
+    
+    // Reset table data to trigger a refresh
+    setTableData([]);
+    setLazyState(prev => ({
+      ...prev,
+      first: 0, // Reset to first page
+      totalRecords: 0
+    }));
+    
     if (window.innerWidth < 768) setSidebarVisible(false);
   };
 
@@ -75,6 +91,23 @@ function AppContent() {
     }
   }, [navigate]);
 
+    // Load stats when component mounts or active provider changes
+  // useEffect(() => {
+  //   const fetchStats = async () => {
+  //     try {
+  //       const response = await fetch(`${API_BASE_URL}/api/${activeProvider}/stats`);
+  //       if (!response.ok) throw new Error('Failed to fetch stats');
+  //       const data = await response.json();
+  //       setStats(data);
+  //     } catch (error) {
+  //       console.error(`Error fetching ${activeProvider} stats:`, error);
+  //     }
+  //   };
+    
+  //   fetchStats();
+  // }, [activeProvider]);
+
+  // Function to load data with pagination
   const loadData = async (lazyStateParam) => {
     setLoading(true);
     try {
@@ -85,9 +118,11 @@ function AppContent() {
       // Fetch a smaller initial dataset for the PopularRoutes component
       const limit = activeView === 'virtualize' && virtualizeView === 'popular-routes' ? 200 : rows;
       
-      const response = await fetch(
-        `${API_BASE_URL}/api/trips?limit=${limit}&offset=${first}`
-      );
+      // Use the new API endpoint with provider
+      const apiUrl = `${API_BASE_URL}/api/${activeProvider}/trips?limit=${limit}&offset=${first}`;
+      console.log('Fetching data from:', apiUrl);
+      
+      const response = await fetch(apiUrl);
       
       if (!response.ok) {
         const errorText = await response.text();
@@ -96,49 +131,49 @@ function AppContent() {
       }
 
       const responseData = await response.json();
+      console.log('API Response:', responseData); // Debug log
       let apiData = [];
       
       // Handle both array and object response formats
       if (Array.isArray(responseData)) {
+        console.log('Response is an array');
         apiData = responseData;
       } else if (responseData.data) {
+        console.log('Response has data property');
         apiData = responseData.data;
         setLazyState(prev => ({
           ...prev,
           totalRecords: responseData.pagination?.total || responseData.data?.length || 0
         }));
+      } else {
+        console.log('Unexpected response format:', responseData);
       }
 
       const transformedData = apiData.map(item => {
         try {
-          const formatDuration = (minutes) => {
-            if (!minutes && minutes !== 0) return 'N/A';
-            const hours = Math.floor(minutes / 60);
-            const mins = minutes % 60;
-            return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-          };
-
-          return {
-            'Route URL': item.route_url || '',
-            'Title': item.title || `${item.origin || 'Unknown'} → ${item.destination || 'Unknown'}`,
-            'From-To': `${item.origin || 'Unknown'} → ${item.destination || 'Unknown'}`,
-            'From': item.origin || 'Unknown',
-            'To': item.destination || 'Unknown',
-            'Duration': formatDuration(item.duration_min),
-            'Price': item.price_inr ? parseFloat(item.price_inr) : (item.price_thb ? parseFloat(item.price_thb) : 0),
-            'currency': item.currency || 'THB',
+          // Map backend fields to frontend expected fields
+          const mappedItem = {
+            // Map backend fields to frontend expected fields
+            'From': item.From || 'N/A',
+            'To': item.To || 'N/A',
+            'Price': item.Price || 0,
+            'Operator': item.Operator || 'N/A',
+            'Date': item.Date || 'N/A',
+            'route_url': item.route_url || '#',
+            'transport_type': item.transport_type || 'N/A',
+            'departure_time': item.departure_time || '--:--',
+            'arrival_time': item.arrival_time || '--:--',
+            'source': item.source || activeProvider,
+            // Additional fields for display
+            'From-To': `${item.From || 'N/A'} → ${item.To || 'N/A'}`,
+            'Route URL': item.route_url || '#',
             'Transport Type': item.transport_type || 'N/A',
-            'Operator': item.operator_name || item.provider || 'N/A',
-            'Departure Time': item.departure_time ? 
-              new Date(item.departure_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--',
-            'Arrival Time': item.arrival_time ? 
-              new Date(item.arrival_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--:--',
-            'Date': item.travel_date ? 
-              new Date(item.travel_date).toISOString().split('T')[0] : 
-              new Date().toISOString().split('T')[0],
-            'source': item.provider || '12go',
+            'Departure Time': item.departure_time || '--:--',
+            'Arrival Time': item.arrival_time || '--:--',
             'rawData': item // Keep raw data for debugging
           };
+          
+          return mappedItem;
         } catch (error) {
           console.error('Error processing item:', { item, error });
           return null; // Skip this item if there's an error
@@ -167,6 +202,7 @@ function AppContent() {
     loadData(event);
   };
 
+  // Handle URL parameters and update state
   useEffect(() => {
     const searchParams = new URLSearchParams(location.search);
     const view = searchParams.get('view');
@@ -177,6 +213,8 @@ function AppContent() {
       if (view === 'data' && provider) {
         setActiveView('data');
         setActiveProvider(provider);
+        // Reset table data when provider changes
+        setTableData([]);
       } else if (view === 'virtualize') {
         setActiveView('virtualize');
         if (tab && ['popular-routes', 'price-graph', 'booking-horizon', 'cheapest-carrier', 'custom-dashboard', 'query-builder'].includes(tab)) {
@@ -193,16 +231,26 @@ function AppContent() {
     }
   }, [location.search, location.pathname, navigate]);
 
-  // Load data when the component mounts or when activeView/virtualizeView changes
-  // Skip loading data if we're on the Compare page
+  // Load data when the component mounts or when activeProvider/activeView/virtualizeView changes
   useEffect(() => {
-    if (location.pathname !== '/compare') {
-      // Only load data if we don't have any data yet or if the view has changed
-      if (tableData.length === 0 || (activeView === 'virtualize' && virtualizeView)) {
-        loadData({ ...lazyState });
+    const loadDataForCurrentState = async () => {
+      console.log('useEffect triggered - activeProvider:', activeProvider, 'activeView:', activeView, 'virtualizeView:', virtualizeView);
+      if (location.pathname !== '/compare') {
+        try {
+          console.log('Loading data for provider:', activeProvider);
+          // Always load fresh data when provider changes
+          await loadData({ 
+            ...lazyState,
+            first: 0 // Always start from the first page when changing providers
+          });
+        } catch (error) {
+          console.error('Error loading data:', error);
+        }
       }
-    }
-  }, [activeView, virtualizeView, location.pathname]);
+    };
+
+    loadDataForCurrentState();
+  }, [activeProvider, activeView, virtualizeView, location.pathname]);
 
   const renderContent = () => {
     if (activeView === 'virtualize') {
@@ -261,7 +309,7 @@ function AppContent() {
                   if (window.innerWidth < 768) setSidebarVisible(false);
                 }}
                 onVirtualizeViewSelect={handleVirtualizeMenuClick}
-                activeProvider={activeView === 'data' ? activeProvider : null}
+                activeProvider={activeProvider}
                 activeView={activeView}
                 virtualizeView={virtualizeView}
               />

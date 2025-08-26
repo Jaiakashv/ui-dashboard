@@ -59,7 +59,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   const dataMenuItems = useMemo(() => [
     { label: '12go', icon: icon12go, id: '12go', isImage: true, lastUpdated: new Date().toISOString() },
     { disabled: true, label: 'traveloka', icon: iconTraveloka, id: 'traveloka', isImage: true },
-    { disabled: true, label: 'bookaway', icon: iconBookaway, id: 'bookaway', isImage: true },
+    { label: 'bookaway', icon: iconBookaway, id: 'bookaway', isImage: true },
     { disabled: true, label: 'busx', icon: iconBusx, id: 'busx', isImage: true },
     { disabled: true, label: 'redbus', icon: iconRedbus, id: 'redbus', isImage: true }
   ], []);
@@ -122,8 +122,8 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
 
   return (
     <div className="w-full bg-[#1E2836] text-white shadow-lg fixed top-0 left-0 right-0 z-50">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+      <div className="w-full px-4">
+        <div className="flex items-center justify-between h-16 max-w-screen-2xl mx-auto">
           <div className="flex items-center">
             {/* Mobile menu button - only visible on mobile */}
             <button
@@ -150,10 +150,10 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
           </div>
 
           {/* Desktop Navigation - hidden on mobile */}
-          <div className="hidden md:block">
-            <div className="flex items-center space-x-4">
+          <div className="hidden md:block flex-1">
+            <div className="flex items-center justify-end space-x-4">
               {/* Data Dropdown */}
-              <div className="relative data-dropdown">
+              <div className="relative data-dropdown flex-shrink-0">
                 <button
                   onClick={toggleDataDropdown}
                   className={`flex items-center px-4 py-2 text-sm font-medium text-white hover:text-blue-300 relative ${isDataDropdownOpen ? 'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-blue-400' : ''}`}
@@ -196,7 +196,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
               </div>
 
               {/* Visualize Menu Items */}
-              <div className="flex space-x-1">
+              <div className="flex space-x-1 overflow-x-auto">
                 {virtualizeMenuItems.map((item) => (
                   <div key={item.id} className="relative">
                     {item.link ? (
