@@ -8,6 +8,60 @@ import { Calendar } from 'primereact/calendar';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 
+// Custom CSS for pagination
+const customPaginationStyle = `
+    .p-paginator {
+        padding: 0.5rem;
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        justify-content: center;
+    }
+    .p-paginator .p-paginator-pages {
+        display: flex;
+        flex-wrap: nowrap;
+        margin: 0 0.5rem;
+    }
+    .p-paginator .p-paginator-pages .p-paginator-page.p-highlight,
+    .p-paginator .p-paginator-pages .p-paginator-page.p-highlight:hover {
+        background: #3b82f6 !important;
+        color: white !important;
+        border-radius: 50%;
+        width: 2.5rem;
+        height: 2.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 0.1rem;
+    }
+    .p-paginator .p-paginator-pages .p-paginator-page {
+        min-width: 2.5rem;
+        height: 2.5rem;
+        margin: 0 0.1rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+    }
+    .p-paginator .p-paginator-current {
+        margin: 0 1rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .p-paginator .p-paginator-first,
+    .p-paginator .p-paginator-prev,
+    .p-paginator .p-paginator-next,
+    .p-paginator .p-paginator-last {
+        min-width: 2.5rem;
+        height: 2.5rem;
+        margin: 0 0.1rem;
+    }
+    .p-paginator .p-dropdown {
+        margin-left: 0.5rem;
+        height: 2.5rem;
+    }
+`;
+
 // Define the new timeline options
 const timelineOptions = [
     'Today',
@@ -23,14 +77,8 @@ const timelineOptions = [
 const fieldOptions = [
     { label: 'Departure Time', value: 'departure_time' },
     { label: 'Arrival Time', value: 'arrival_time' },
-    { label: 'Travel Date', value: 'travel_date' },
     { label: 'Duration', value: 'duration_min' }, 
     { label: 'Price', value: 'price_inr' },
-    { label: 'Transport Type', value: 'transport_type' },
-    { label: 'Operator', value: 'operator_name' },
-    { label: 'Origin', value: 'origin' },
-    { label: 'Destination', value: 'destination' },
-    { label: 'Route URL', value: 'route_url' }
 ];
 
 const operatorOptions = [
@@ -84,12 +132,16 @@ const QueryBuilder = () => {
     const [error, setError] = useState('');
     
     // State for lazy pagination and sorting 
-    const [lazyParams, setLazyParams] = useState({
-        first: parseInt(getSingleParam('first', 0), 10),
-        rows: parseInt(getSingleParam('rows', 50), 10),
-        page: parseInt(getSingleParam('page', 0), 10),
-        sortField: getSingleParam('sort_by', 'departure_time'),
-        sortOrder: getSingleParam('sort_order', 'ASC') === 'DESC' ? -1 : 1,
+    const [lazyParams, setLazyParams] = useState(() => {
+        const first = parseInt(getSingleParam('first', 0), 10);
+        const rows = parseInt(getSingleParam('rows', 50), 10);
+        return {
+            first: first,
+            rows: rows,
+            page: Math.floor(first / rows),
+            sortField: getSingleParam('sort_by', 'departure_time'),
+            sortOrder: getSingleParam('sort_order', 'ASC') === 'DESC' ? -1 : 1,
+        };
     });
     
     const [fromSuggestions, setFromSuggestions] = useState([]);
@@ -99,6 +151,17 @@ const QueryBuilder = () => {
     
     // This state is to control when a data fetch should happen
     const [triggerFetch, setTriggerFetch] = useState(0);
+
+    // Add custom pagination styles
+    useEffect(() => {
+        const styleElement = document.createElement('style');
+        styleElement.textContent = customPaginationStyle;
+        document.head.appendChild(styleElement);
+        
+        return () => {
+            document.head.removeChild(styleElement);
+        };
+    }, []);
 
     const fetchFilterOptions = useCallback(async () => {
         setLoadingFilters(true);
@@ -629,22 +692,47 @@ const QueryBuilder = () => {
                             sortField={lazyParams.sortField}
                             sortOrder={lazyParams.sortOrder}
                             onPage={(e) => {
-                                setLazyParams(prev => ({ ...prev, ...e }));
+                                const newPage = Math.floor(e.first / e.rows);
+                                // Update URL with new pagination state first
+                                const url = new URL(window.location);
+                                url.searchParams.set('first', e.first);
+                                url.searchParams.set('rows', e.rows);
+                                url.searchParams.set('page', newPage);
+                                window.history.pushState({}, '', url);
+                                
+                                // Then update state and trigger fetch
+                                setLazyParams(prev => ({
+                                    ...prev,
+                                    first: e.first,
+                                    rows: e.rows,
+                                    page: newPage
+                                }));
                                 setTriggerFetch(prev => prev + 1);
                             }}
                             onSort={(e) => {
+                                // Update URL with sort parameters
+                                const url = new URL(window.location);
+                                url.searchParams.set('sort_by', e.sortField);
+                                url.searchParams.set('sort_order', e.sortOrder === 1 ? 'ASC' : 'DESC');
+                                url.searchParams.set('first', '0');
+                                url.searchParams.set('page', '0');
+                                window.history.pushState({}, '', url);
+                                
+                                // Then update state and trigger fetch
                                 setLazyParams(prev => ({
                                     ...prev,
                                     sortField: e.sortField,
                                     sortOrder: e.sortOrder,
-                                    first: 0, // Reset to first page when sorting
-                                    page: 0   // Reset page number
+                                    first: 0,
+                                    page: 0
                                 }));
                                 setTriggerFetch(prev => prev + 1);
                             }}
                             scrollable 
                             scrollHeight="400px"
                             sortMode="single"
+                            paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
+                            currentPageReportTemplate="Showing {first} to {last} of {totalRecords} records"
                         >
                             {getColumns(conditions)}
                         </DataTable>
