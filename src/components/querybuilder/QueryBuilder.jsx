@@ -3,1090 +3,410 @@ import { Card } from 'primereact/card';
 import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
-import { Column } from 'primereact/column';
-import { Menu } from 'primereact/menu';
 import { AutoComplete } from 'primereact/autocomplete';
 import { MultiSelect } from 'primereact/multiselect';
 import { Calendar } from 'primereact/calendar';
+import { Menu } from 'primereact/menu';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
 import { saveAs } from 'file-saver';
 
-const operators = [
-  { label: 'Equals', value: '=' },
-  { label: 'Not Equals', value: '!=' },
-  { label: 'Contains', value: 'LIKE' },
-  { label: 'Greater Than', value: '>' },
-  { label: 'Less Than', value: '<' }
+// Define the new timeline options
+const timelineOptions = [
+    'Today',
+    'Tomorrow',
+    'Next 7 Days',
+    'Next 14 Days',
+    'This Month',
+    'This Year',
+    'Custom'
 ];
 
-const fields = [
-  { label: 'From', value: 'From' },
-  { label: 'To', value: 'To' },
-  { label: 'Price', value: 'Price' },
-  { label: 'Operator', value: 'Operator' },
-  { label: 'Transport Type', value: 'Transport Type' },
-  { label: 'Departure Time', value: 'Departure Time' },
-  { label: 'Arrival Time', value: 'Arrival Time' },
-  { label: 'Duration', value: 'Duration' }
-];
+// Helper function to parse URL params into an array
+const getParamsAsArray = (paramName) => {
+    const params = new URLSearchParams(window.location.search);
+    const paramValue = params.get(paramName);
+    return paramValue ? paramValue.split(',') : [];
+};
 
-const QueryBuilder = ({ onRunQuery, data = [] }) => {
-  // Format cell value for display with provider-specific formatting
-  const formatCellValue = (value, column = '') => {
-    if (value === null || value === undefined) return '-';
-    if (value instanceof Date) return value.toLocaleString();
-    if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-    if (typeof value === 'object') return JSON.stringify(value);
-    
-    // Special handling for price to format as currency
-    if ((column === 'price' || column === 'price_usd') && typeof value === 'number' && !isNaN(value)) {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 2
-      }).format(value);
-    }
-    
-    // Format duration in minutes to HH:MM format
-    if (column === 'duration' && typeof value === 'number' && !isNaN(value)) {
-      const hours = Math.floor(value / 60);
-      const minutes = value % 60;
-      return `${hours}h ${minutes}m`;
-    }
-    
-    // Format date strings
-    if ((column.includes('time') || column.includes('date')) && typeof value === 'string') {
-      try {
-        const date = new Date(value);
-        if (!isNaN(date)) {
-          return date.toLocaleString();
-        }
-      } catch (e) {
-        console.warn('Error formatting date:', e);
-      }
-    }
-    
-    return String(value);
-  };
+// Helper function to get a single URL param
+const getSingleParam = (paramName, defaultValue) => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get(paramName) || defaultValue;
+};
 
-  // Handle column sorting with type awareness
-  const handleSort = (column) => {
-    setResults(prevResults => {
-      return [...prevResults].sort((a, b) => {
-        // Handle null/undefined values
-        if (a[column] === null || a[column] === undefined) return 1;
-        if (b[column] === null || b[column] === undefined) return -1;
-        
-        // Special handling for numeric values
-        if (typeof a[column] === 'number' && typeof b[column] === 'number') {
-          return a[column] - b[column];
-        }
-        
-        // Handle date strings
-        const dateA = new Date(a[column]);
-        const dateB = new Date(b[column]);
-        if (!isNaN(dateA) && !isNaN(dateB)) {
-          return dateA - dateB;
-        }
-        
-        // Default string comparison
-        return String(a[column]).localeCompare(String(b[column]));
-      });
+const QueryBuilder = () => {
+    // State management for query and filters, now initialized from URL
+    const [conditions, setConditions] = useState([{ field: '', operator: '=', value: '' }]);
+    const [selectedTimeline, setSelectedTimeline] = useState(getSingleParam('timeline', 'Next 14 Days'));
+    const [selectedFroms, setSelectedFroms] = useState(getParamsAsArray('origin'));
+    const [selectedTos, setSelectedTos] = useState(getParamsAsArray('destination'));
+    const [selectedTransportTypes, setSelectedTransportTypes] = useState(getParamsAsArray('transport_type'));
+    const [selectedOperators, setSelectedOperators] = useState(getParamsAsArray('operator_name'));
+    const [filterOptions, setFilterOptions] = useState({ from: [], to: [], transportType: [], operator: [] });
+    const [loadingFilters, setLoadingFilters] = useState(false);
+    const [customRange, setCustomRange] = useState(null); 
+    
+    // State management for results
+    const [results, setResults] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [totalRecords, setTotalRecords] = useState(0);
+    const [error, setError] = useState('');
+    
+    // State for lazy pagination and sorting 
+    const [lazyParams, setLazyParams] = useState({
+        first: parseInt(getSingleParam('first', 0), 10),
+        rows: parseInt(getSingleParam('rows', 50), 10),
+        page: parseInt(getSingleParam('page', 0), 10),
+        sortField: getSingleParam('sort_by', 'departure_time'),
+        sortOrder: getSingleParam('sort_order', 'ASC') === 'DESC' ? -1 : 1,
     });
-  };
+    
+    const [fromSuggestions, setFromSuggestions] = useState([]);
+    const [toSuggestions, setToSuggestions] = useState([]);
+    const [transportTypeSuggestions, setTransportTypeSuggestions] = useState([]);
+    const [operatorSuggestions, setOperatorSuggestions] = useState([]);
 
-  // Export results to CSV
-  const [conditions, setConditions] = useState([{ field: '', operator: '=', value: '' }]);
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  
-  // Pagination and sorting state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
-  const [totalRecords, setTotalRecords] = useState(0);
-  const [sortField, setSortField] = useState('departure_time');
-  const [sortOrder, setSortOrder] = useState(1); // 1 for ASC, -1 for DESC
-  const [error, setError] = useState('');
-  
-  // Process and normalize results from both 12go and Bookaway
-  const processResults = (data) => {
-    if (!Array.isArray(data)) return [];
-    
-    return data.map(item => {
-      // Handle 12go data structure
-      if (item.from) {
-        return {
-          id: item.id,
-          provider: '12go',
-          from: item.from,
-          to: item.to,
-          departure_time: item.departure_time,
-          arrival_time: item.arrival_time,
-          duration: item.duration,
-          price: item.price,
-          currency: item.currency,
-          transport_type: item.transport_type,
-          operator_name: item.operator_name,
-          available_seats: item.available_seats,
-          // Add any other 12go specific fields
-          ...item
-        };
-      }
-      
-      // Handle Bookaway data structure
-      if (item.origin) {
-        return {
-          id: item.id,
-          provider: 'bookaway',
-          from: item.origin,
-          to: item.destination,
-          departure_time: item.departure_time,
-          arrival_time: item.arrival_time,
-          duration: item.duration_minutes ? item.duration_minutes / 60 : null, // Convert to hours
-          price: item.price_amount,
-          currency: item.price_currency,
-          transport_type: item.transport_type,
-          operator_name: item.operator_name || item.carrier_name,
-          available_seats: item.available_seats,
-          // Map any other Bookaway specific fields
-          ...item
-        };
-      }
-      
-      // Default case - return as is
-      return { ...item, provider: item.provider || 'unknown' };
-    });
-  };
-  const [suggestions, setSuggestions] = useState([]);
-  const menuRef = useRef(null);
-
-  // Header filter states
-  const [selectedTimeline, setSelectedTimeline] = useState('Last 14 Days');
-  const [selectedFroms, setSelectedFroms] = useState([]);
-  const [selectedTos, setSelectedTos] = useState([]);
-  const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
-  const [selectedOperators, setSelectedOperators] = useState([]);
-  const [filterOptions, setFilterOptions] = useState({
-    from: [],
-    to: [],
-    transportType: [],
-    operator: []
-  });
-  const [loadingFilters, setLoadingFilters] = useState(false);
-  const [customRange, setCustomRange] = useState(null); // [startDate, endDate]
-  const [selectedDateField, setSelectedDateField] = useState('');
-  const [fromSuggestions, setFromSuggestions] = useState([]);
-  const [toSuggestions, setToSuggestions] = useState([]);
-  const [transportTypeSuggestions, setTransportTypeSuggestions] = useState([]);
-  const [operatorSuggestions, setOperatorSuggestions] = useState([]);
-  const [isLoadingFrom, setIsLoadingFrom] = useState(false);
-  const [isLoadingTo, setIsLoadingTo] = useState(false);
-  const [isLoadingTransport, setIsLoadingTransport] = useState(false);
-  const [isLoadingOperator, setIsLoadingOperator] = useState(false);
-
-  // Build date field options from dataset keys that look like dates/times
-  const dateFieldOptions = useMemo(() => {
-    if (!Array.isArray(data) || data.length === 0) return [];
-    const keys = Array.from(new Set(data.flatMap(obj => Object.keys(obj || {}))));
-    const candidates = keys.filter(k => /date|time/i.test(k));
-    return candidates.map(k => ({ label: k, value: k }));
-  }, [data]);
-
-  // Default the date field to the DataTable's convention 'Date' if present
-  useEffect(() => {
-    if (!selectedDateField && Array.isArray(data) && data.length) {
-      const keys = Object.keys(data[0] || {});
-      if (keys.includes('Date')) {
-        setSelectedDateField('Date');
-      } else if (dateFieldOptions.length) {
-        setSelectedDateField(dateFieldOptions[0].value);
-      }
-    }
-  }, [data, dateFieldOptions, selectedDateField]);
-
-  // Search for suggestions based on field and query
-  // Fetch filter options from API
-  // const fetchFilterOptions = async () => {
-  //   try {
-  //     setLoadingFilters(true);
-  //     const response = await fetch(`${import.meta.env.VITE_API_URL}/api/filters`);
-  //     const data = await response.json();
-      
-  //     if (data.success) {
-  //       setFilterOptions({
-  //         from: data.data.departure_countries || [],
-  //         to: data.data.arrival_countries || [],
-  //         transportType: data.data.transport_types || [],
-  //         operator: data.data.operators || []
-  //       });
-  //     }
-  //   } catch (error) {
-  //     console.error('Error fetching filter options:', error);
-  //     // Fallback to empty arrays if API fails
-  //     setFilterOptions({
-  //       from: [],
-  //       to: [],
-  //       transportType: [],
-  //       operator: []
-  //     });
-  //   } finally {
-  //     setLoadingFilters(false);
-  //   }
-  // };
-
-  // Single source of truth for loading filters
-  const fetchFilterOptions = useCallback(async () => {
-    try {
-      setLoadingFilters(true);
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/filters`);
-      const data = await response.json();
-      
-      console.log('Raw API response:', data);
-      
-      // Parse comma-separated strings into arrays of objects
-      const parseCSV = (str, key) => {
-        if (!str) return [];
-        return str.split(',').map(item => ({
-          [key]: item.trim(),
-          label: item.trim(),
-          value: item.trim()
-        }));
-      };
-      
-      // The API returns data directly in the response
-      const responseData = data.data || data;
-      
-      const origins = parseCSV(responseData.origin, 'origin');
-      const destinations = parseCSV(responseData.destination, 'destination');
-      const transportTypes = parseCSV(responseData.transport_type, 'transport_type');
-      const operators = parseCSV(responseData.operator_name, 'operator_name');
-      
-      console.log('Parsed data:', { 
-        origins: origins.slice(0, 5), // Log first 5 items to avoid cluttering console
-        destinations: destinations.slice(0, 5),
-        transportTypes,
-        operators: operators.slice(0, 5)
-      });
-      
-      // Set filter options
-      setFilterOptions({
-        from: origins,
-        to: destinations,
-        transportType: transportTypes,
-        operator: operators
-      });
-      
-      // Set initial suggestions
-      setFromSuggestions(origins);
-      setToSuggestions(destinations);
-      setTransportTypeSuggestions(transportTypes);
-      setOperatorSuggestions(operators);
-    } catch (error) {
-      console.error('Error loading filter options:', error);
-    } finally {
-      setLoadingFilters(false);
-    }
-  }, []);
-  
-  // Load filters on component mount
-  useEffect(() => {
-    fetchFilterOptions();
-  }, [fetchFilterOptions]);
-
-  // Filter handlers for each field - client-side filtering
-  const onFromFilter = useCallback((event) => {
-    const query = (event.filterValue || '').toLowerCase();
-    console.log('Filtering "From" with query:', query);
-    
-    if (!query) {
-      // Reset to all options when query is empty
-      setFromSuggestions(filterOptions.from || []);
-      return;
-    }
-    
-    const filtered = (filterOptions.from || []).filter(item => 
-      item.label.toLowerCase().includes(query)
-    );
-    
-    console.log('Filtered "From" options:', filtered);
-    setFromSuggestions(filtered);
-  }, [filterOptions.from]);
-  
-  const onToFilter = useCallback((event) => {
-    const query = (event.filterValue || '').toLowerCase();
-    console.log('Filtering "To" with query:', query);
-    
-    if (!query) {
-      setToSuggestions(filterOptions.to || []);
-      return;
-    }
-    
-    const filtered = (filterOptions.to || []).filter(item => 
-      item.label.toLowerCase().includes(query)
-    );
-    
-    console.log('Filtered "To" options:', filtered);
-    setToSuggestions(filtered);
-  }, [filterOptions.to]);
-
-  const onTransportTypeFilter = (event) => {
-    const query = event.filterValue?.toLowerCase() || '';
-    if (!query) {
-      setTransportTypeSuggestions(
-        filterOptions.transportType.map(item => ({
-          label: item.transport_type || item,
-          value: item.transport_type || item
-        }))
-      );
-      return;
-    }
-    
-    const filtered = (filterOptions.transportType || [])
-      .filter(item => {
-        const value = item.transport_type || item;
-        return value.toLowerCase().includes(query);
-      })
-      .map(item => ({
-        label: item.transport_type || item,
-        value: item.transport_type || item
-      }));
-    
-    setTransportTypeSuggestions(filtered);
-  };
-
-  const onOperatorFilter = (event) => {
-    const query = event.filterValue?.toLowerCase() || '';
-    if (!query) {
-      setOperatorSuggestions(
-        filterOptions.operator.map(item => ({
-          label: item.operator_name || item,
-          value: item.operator_name || item
-        }))
-      );
-      return;
-    }
-    
-    const filtered = (filterOptions.operator || [])
-      .filter(item => {
-        const value = item.operator_name || item;
-        return value.toLowerCase().includes(query);
-      })
-      .map(item => ({
-        label: item.operator_name || item,
-        value: item.operator_name || item
-      }));
-    
-    setOperatorSuggestions(filtered);
-  };
-
-  // Initial data load
-  useEffect(() => {
-    const loadInitialData = async () => {
-      try {
+    const fetchFilterOptions = useCallback(async () => {
         setLoadingFilters(true);
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/api/filters`);
-        const data = await response.json();
-        
-      if (data.success) {
-        console.log('Loaded filter data:', data.data);
-          
-        // Process and combine results from both providers with consistent field names
-        const processResults = (results) => {
-          if (!Array.isArray(results)) return [];
-          
-          return results.map(item => {
-            // Normalize field names between 12go and Bookaway providers
-            const normalized = {
-              // Common fields
-              id: item.id || `${item.provider || 'unknown'}-${Math.random().toString(36).substr(2, 9)}`,
-              provider: item.provider || 'unknown',
-              
-              // Location fields
-              origin: item.origin || item.from || '',
-              destination: item.destination || item.to || '',
-              
-              // Timing fields
-              departure_time: item.departure_time || item.departure || '',
-              arrival_time: item.arrival_time || item.arrival || '',
-              duration: item.duration || 0,
-              
-              // Pricing
-              price: item.price || item.price_usd || 0,
-              price_currency: item.price_currency || 'USD',
-              
-              // Transport details
-              transport_type: item.transport_type || item.transport || '',
-              operator_name: item.operator_name || item.operator || '',
-              
-              // Keep all original fields
-              ...item
+        try {
+            const response = await fetch(`${import.meta.env.VITE_API_URL}/api/filters`);
+            const data = await response.json();
+            
+            const parseCSV = (str) => {
+              if (!str) return [];
+              return str.split(',').map(item => ({ label: item.trim(), value: item.trim() }));
             };
             
-            // Calculate duration if not provided but we have both departure and arrival times
-            if (!normalized.duration && normalized.departure_time && normalized.arrival_time) {
-              try {
-                const depTime = new Date(normalized.departure_time);
-                const arrTime = new Date(normalized.arrival_time);
-                if (!isNaN(depTime) && !isNaN(arrTime)) {
-                  const diffMs = arrTime - depTime;
-                  normalized.duration = Math.floor(diffMs / (1000 * 60)); // Convert to minutes
-                }
-              } catch (e) {
-                console.warn('Error calculating duration:', e);
-              }
+            const responseData = data.data || data;
+            
+            const origins = parseCSV(responseData.origin);
+            const destinations = parseCSV(responseData.destination);
+            const transportTypes = parseCSV(responseData.transport_type);
+            const operators = parseCSV(responseData.operator_name);
+            
+            setFilterOptions({
+                from: origins,
+                to: destinations,
+                transportType: transportTypes,
+                operator: operators
+            });
+            
+            setFromSuggestions(origins);
+            setToSuggestions(destinations);
+            setTransportTypeSuggestions(transportTypes);
+            setOperatorSuggestions(operators);
+        } catch (error) {
+            console.error('Error loading filter options:', error);
+        } finally {
+            setLoadingFilters(false);
+        }
+    }, []);
+
+    const fetchData = useCallback(async (params) => {
+        setLoading(true);
+        setError('');
+        
+        const urlParams = new URLSearchParams();
+        urlParams.append('page', params.page + 1); // DataTable page is 0-indexed, API is 1-indexed
+        urlParams.append('limit', params.rows);
+        urlParams.append('sort_by', params.sortField);
+        urlParams.append('sort_order', params.sortOrder === 1 ? 'ASC' : 'DESC');
+
+        if (selectedFroms.length > 0) { urlParams.append('origin', selectedFroms.join(',')); }
+        if (selectedTos.length > 0) { urlParams.append('destination', selectedTos.join(',')); }
+        if (selectedTransportTypes.length > 0) { urlParams.append('transport_type', selectedTransportTypes.join(',')); }
+        if (selectedOperators.length > 0) { urlParams.append('operator_name', selectedOperators.join(',')); }
+        
+        if (selectedTimeline === 'Custom' && customRange && customRange[0] && customRange[1]) {
+            const formatDate = (date) => {
+                const d = new Date(date);
+                const day = String(d.getDate()).padStart(2, '0');
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const year = d.getFullYear();
+                return `${year}-${month}-${day}`;
+            };
+            urlParams.append('start_date', formatDate(customRange[0]));
+            urlParams.append('end_date', formatDate(customRange[1]));
+        } else if (selectedTimeline) {
+            urlParams.append('timeline', selectedTimeline);
+        }
+
+        try {
+            const apiUrl = `${import.meta.env.VITE_API_URL}/api/combined-trips?${urlParams.toString()}`;
+            console.log('API Request URL:', apiUrl);
+
+            const response = await fetch(apiUrl);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
             }
             
-            return normalized;
-          });
-        };
+            const result = await response.json();
 
-        const origins = processResults(data.data.origins);
-        const destinations = processResults(data.data.destinations);
-        const transportTypes = processResults(data.data.transport_types);
-        const operators = processResults(data.data.operators);
-          
-        setFilterOptions({
-          from: origins,
-          to: destinations,
-          transportType: transportTypes,
-          operator: operators
-        });
-          
-        console.log('Processed filter options:', { origins, destinations, transportTypes, operators });
-          
-        // Set initial suggestions
-        setFromSuggestions(origins);
-        setToSuggestions(destinations);
-        setTransportTypeSuggestions(transportTypes);
-        setOperatorSuggestions(operators);
-          
-        setOperatorSuggestions(operators.map(item => ({
-          label: item.operator_name || item,
-          value: item.operator_name || item
-        })));
-      } else {
-        console.error('Failed to load filter data:', data);
-      }
-    } catch (error) {
-      console.error('Error loading initial filter data:', error);
-    } finally {
-      setLoadingFilters(false);
-    }
-  };
+            if (result.success === false) {
+                throw new Error(result.error || 'Failed to fetch data');
+            }
 
-  loadInitialData();
-}, []);
+            setResults(result.data || []);
+            setTotalRecords(result.pagination.total);
+            
+        } catch (error) {
+            console.error('Error fetching data:', error);
+            setError(error.message || 'An error occurred while fetching data');
+        } finally {
+            setLoading(false);
+        }
+    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline, customRange]);
 
-const searchSuggestions = (event, field) => {
-  const query = event.query.toLowerCase();
-  const fieldValues = getFieldSuggestions(field);
-  const filtered = fieldValues.filter(value => 
-    value.toLowerCase().includes(query)
-  );
-  setSuggestions(filtered);
-};
-
-const addCondition = () => {
-  setConditions([...conditions, { field: '', operator: '=', value: '' }]);
-};
-
-const removeCondition = (index) => {
-  const newConditions = conditions.filter((_, i) => i !== index);
-  setConditions(newConditions);
-};
-
-const updateCondition = (index, field, value) => {
-  const newConditions = [...conditions];
-  newConditions[index] = { ...newConditions[index], [field]: value };
-  setConditions(newConditions);
-};
-
-const handleRunQuery = async () => {
-  try {
-    setLoading(true);
-    setError('');
+    // 1. Fetch filter options on mount (runs once)
+    useEffect(() => {
+        fetchFilterOptions();
+    }, [fetchFilterOptions]);
     
-    // Build query parameters
-    const params = new URLSearchParams();
-    
-    // Add filter conditions
-    conditions.forEach(cond => {
-      if (cond.field && cond.operator && cond.value) {
-        // Special handling for different field names between providers
-        let fieldName = cond.field.toLowerCase();
-        if (fieldName === 'from') fieldName = 'origin';
-        if (fieldName === 'to') fieldName = 'destination';
-        if (fieldName === 'operator') fieldName = 'operator_name';
-        if (fieldName === 'transport type') fieldName = 'transport_type';
-        if (fieldName === 'departure time') fieldName = 'departure_time';
-        if (fieldName === 'arrival time') fieldName = 'arrival_time';
+    // 2. This effect runs ONLY on component mount to read URL params and set initial state.
+    // It's the only place where fetchData is called directly on load.
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const newFroms = urlParams.get('origin') ? urlParams.get('origin').split(',') : [];
+        const newTos = urlParams.get('destination') ? urlParams.get('destination').split(',') : [];
+        const newTransportTypes = urlParams.get('transport_type') ? urlParams.get('transport_type').split(',') : [];
+        const newOperators = urlParams.get('operator_name') ? urlParams.get('operator_name').split(',') : [];
+        const newTimeline = urlParams.get('timeline') || 'Next 14 Days';
         
-        // Add the condition to the query
-        params.append(fieldName, `${cond.operator}${cond.value}`);
-      }
-    });
-
-    // Add pagination and sorting parameters
-    params.append('page', currentPage);
-    params.append('limit', pageSize);
-    if (sortField) {
-      params.append('sort_by', sortField);
-      params.append('sort_order', sortOrder === 1 ? 'ASC' : 'DESC');
-    }
+        setSelectedFroms(newFroms);
+        setSelectedTos(newTos);
+        setSelectedTransportTypes(newTransportTypes);
+        setSelectedOperators(newOperators);
+        setSelectedTimeline(newTimeline);
+        
+        const newLazyParams = {
+            first: parseInt(urlParams.get('first') || 0, 10),
+            rows: parseInt(urlParams.get('rows') || 50, 10),
+            page: parseInt(urlParams.get('page') || 0, 10),
+            sortField: urlParams.get('sort_by') || 'departure_time',
+            sortOrder: urlParams.get('sort_order') === 'DESC' ? -1 : 1,
+        };
+        setLazyParams(newLazyParams);
+        
+        // Initial data fetch based on URL params
+        fetchData(newLazyParams);
+    }, []); // Empty dependency array means it runs once on mount
     
-    console.log('Fetching data with params:', params.toString());
-    
-    // Make the API call
-    const response = await fetch(`${import.meta.env.VITE_API_URL}/api/combined-trips?${params.toString()}`);
-    const result = await response.json();
-    console.log('API Response:', result);
+    // 3. This effect updates the URL whenever filters change, but does NOT trigger a fetch
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        // Remove existing filter parameters before adding new ones
+        ['origin', 'destination', 'transport_type', 'operator_name', 'timeline'].forEach(param => params.delete(param));
+        
+        if (selectedFroms.length > 0) params.append('origin', selectedFroms.join(','));
+        if (selectedTos.length > 0) params.append('destination', selectedTos.join(','));
+        if (selectedTransportTypes.length > 0) params.append('transport_type', selectedTransportTypes.join(','));
+        if (selectedOperators.length > 0) params.append('operator_name', selectedOperators.join(','));
+        
+        if (selectedTimeline && selectedTimeline !== 'Custom') {
+          params.append('timeline', selectedTimeline);
+        }
+        
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        window.history.pushState({}, '', newUrl);
+        
+    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline]);
 
-    if (response.ok) {
-      // Process the results to normalize field names between providers
-      const processedResults = processResults(Array.isArray(result) ? result : (result.data || []));
-      
-      // Update pagination info if available
-      if (result.pagination) {
-        setTotalRecords(result.pagination.total);
-        setCurrentPage(result.pagination.page);
-        setPageSize(result.pagination.limit);
-      } else {
-        setTotalRecords(processedResults.length);
-      }
-      
-      setResults(processedResults);
-      if (onRunQuery) onRunQuery(processedResults);
-      
-      // Scroll to results
-      document.getElementById('results-section')?.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      const errorMsg = result.error || `HTTP ${response.status}: ${response.statusText}`;
-      console.error('API Error:', errorMsg);
-      setError(errorMsg);
-      setResults([]);
-    }
-  } catch (err) {
-    console.error('Error running query:', err);
-    setError('An error occurred while running the query');
-    setResults([]);
-  } finally {
-    setLoading(false);
-  }
-  };
+    const handleRunQuery = () => {
+        const newLazyParams = { ...lazyParams, first: 0, page: 0 };
+        setLazyParams(newLazyParams);
+        fetchData(newLazyParams);
+    };
 
+    const formatCellValue = (value, field) => {
+        if (value === null || value === undefined) return '-';
+        if (field === 'price' && typeof value === 'number') {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+        }
+        if (field === 'duration' && typeof value === 'number') {
+            const hours = Math.floor(value / 60);
+            const minutes = value % 60;
+            return `${hours}h ${minutes}m`;
+        }
+        return String(value);
+    };
 
-  const exportToCSV = () => {
-    if (results.length === 0) return;
-    
-    // Get headers
-    const headers = Object.keys(results[0]);
-    
-    // Convert data to CSV
-    const csvContent = [
-      headers.join(','), // header row
-      ...results.map(row => 
-        headers.map(fieldName => 
-          `"${String(row[fieldName] || '').replace(/"/g, '""')}"`
-        ).join(',')
-      )
-    ].join('\r\n');
-    
-    // Create blob and download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    saveAs(blob, `query-results-${new Date().toISOString().slice(0, 10)}.csv`);
-  };
+    const getColumns = (data) => {
+        if (!data || data.length === 0) return [];
+        const columns = Object.keys(data[0] || {});
+        return columns.map(field => {
+            return (
+                <Column 
+                    key={field} 
+                    field={field} 
+                    header={field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    body={(rowData) => formatCellValue(rowData[field], field)}
+                    sortable
+                />
+            );
+        });
+    };
 
-  const exportToJSON = () => {
-    if (results.length === 0) return;
-    
-    const jsonContent = JSON.stringify(results, null, 2);
-    const blob = new Blob([jsonContent], { type: 'application/json' });
-    saveAs(blob, `query-results-${new Date().toISOString().slice(0, 10)}.json`);
-  };
+    return (
+        <div className="query-builder">
+            <Card className="shadow-4 border-round-2xl p-6 bg-white/80 backdrop-blur-sm w-full">
+                <div className="mb-6">
+                    <div className="dropdownoption flex flex-row gap-2 flex-wrap mb-8">
+                        <div className="timeline min-w-[260px]">
+                            <Dropdown
+                                value={selectedTimeline}
+                                onChange={(e) => setSelectedTimeline(e.value)}
+                                options={timelineOptions.map(v => ({ label: v, value: v }))}
+                                placeholder="Timeframe"
+                                className="w-full"
+                            />
+                            {selectedTimeline === 'Custom' && (
+                                <Calendar
+                                    value={customRange}
+                                    onChange={(e) => setCustomRange(e.value)}
+                                    selectionMode="range"
+                                    readOnlyInput
+                                    showIcon
+                                    placeholder="Select date range"
+                                    className="w-full mt-2"
+                                />
+                            )}
+                        </div>
+                        <div className="from min-w-[150px]">
+                            <MultiSelect
+                                value={selectedFroms}
+                                onChange={(e) => setSelectedFroms(e.value)}
+                                options={fromSuggestions}
+                                optionLabel="label"
+                                optionValue="value"
+                                filter
+                                onFilter={(e) => onFilter(e, 'from')}
+                                display="chip"
+                                placeholder="Search departure..."
+                                selectedItemsLabel="{0} origins selected"
+                                className="w-full text-sm"
+                                showSelectAll
+                                maxSelectedLabels={3}
+                                loading={loadingFilters}
+                                emptyFilterMessage="No origins found"
+                            />
+                        </div>
+                        <div className="to min-w-[150px]">
+                            <MultiSelect
+                                value={selectedTos}
+                                onChange={(e) => setSelectedTos(e.value)}
+                                options={toSuggestions}
+                                optionLabel="label"
+                                optionValue="value"
+                                filter
+                                onFilter={(e) => onFilter(e, 'to')}
+                                display="chip"
+                                placeholder="Search destination..."
+                                selectedItemsLabel="{0} destinations selected"
+                                className="w-full text-sm"
+                                showSelectAll
+                                maxSelectedLabels={3}
+                                loading={loadingFilters}
+                                emptyFilterMessage="No destinations found"
+                            />
+                        </div>
+                        <div className="transport-type min-w-[150px]">
+                            <MultiSelect
+                                value={selectedTransportTypes}
+                                onChange={(e) => setSelectedTransportTypes(e.value)}
+                                options={transportTypeSuggestions}
+                                optionLabel="label"
+                                optionValue="value"
+                                display="chip"
+                                placeholder="Search transport type..."
+                                selectedItemsLabel="{0} transport types selected"
+                                className="w-full text-sm"
+                                filter
+                                onFilter={(e) => onFilter(e, 'transport')}
+                                showSelectAll
+                                maxSelectedLabels={3}
+                                loading={loadingFilters}
+                                emptyFilterMessage="No transport types found"
+                            />
+                        </div>
+                        <div className="operator min-w-[150px]">
+                            <MultiSelect
+                                value={selectedOperators}
+                                onChange={(e) => setSelectedOperators(e.value)}
+                                options={operatorSuggestions}
+                                optionLabel="label"
+                                optionValue="value"
+                                display="chip"
+                                placeholder="Search operator..."
+                                selectedItemsLabel="{0} operators selected"
+                                className="w-full text-sm"
+                                filter
+                                onFilter={(e) => onFilter(e, 'operator')}
+                                showSelectAll
+                                maxSelectedLabels={3}
+                                loading={loadingFilters}
+                                emptyFilterMessage="No operators found"
+                            />
+                        </div>
+                        <div className="submit" style={{marginTop:'2px'}}>
+                            <Button label="Apply" icon="pi pi-check" onClick={handleRunQuery} loading={loading} style={{backgroundColor:'#007bff',color:'white',borderRadius:'5px',padding:'10px'}} />
+                        </div>
+                    </div>
 
-  const exportMenuItems = [
-    {
-      label: 'Export as CSV',
-      icon: 'pi pi-file-excel',
-      command: exportToCSV
-    },
-    {
-      label: 'Export as JSON',
-      icon: 'pi pi-code',
-      command: exportToJSON
-    }
-  ];
-
-  return (
-    <div className="query-builder">
-      <Menu model={exportMenuItems} popup ref={menuRef} id="export_menu" />
-      <Card className="shadow-4 border-round-2xl p-6 bg-white/80 backdrop-blur-sm w-full">
-  {/* Header */}
-  <div className="mb-6">
-    <div className="dropdownoption flex flex-row gap-2 flex-wrap mb-8">
-      {/* Timeline */}
-      <div className="timeline min-w-[260px]">
-        <Dropdown
-          value={selectedTimeline}
-          onChange={(e) => setSelectedTimeline(e.value)}
-          options={[
-            'Today','Yesterday','Last 7 Days','Last 14 Days','Last 28 Days','Last 30 Days','Last 90 Days','This Month','This Year','Custom'
-          ].map(v => ({ label: v, value: v }))}
-          placeholder="Timeframe"
-          className="w-full"
-        />
-        {selectedTimeline === 'Custom' && (
-          <Calendar
-            value={customRange}
-            onChange={(e) => setCustomRange(e.value)}
-            selectionMode="range"
-            readOnlyInput
-            showIcon
-            placeholder="Select date range"
-            className="w-full mt-2"
-          />
-        )}
-      </div>
-
-      {/* Date Field */}
-      <div className="date-field min-w-[220px]">
-        <Dropdown
-          value={selectedDateField}
-          onChange={(e) => setSelectedDateField(e.value)}
-          options={dateFieldOptions}
-          optionLabel="label"
-          optionValue="value"
-          placeholder="Date Field"
-          className="w-full"
-          showClear
-        />
-      </div>
-
-      {/* From */}
-      <div className="from min-w-[150px]">
-        <MultiSelect
-          value={selectedFroms}
-          onChange={(e) => setSelectedFroms(e.value)}
-          options={fromSuggestions}
-          optionLabel="label"
-          optionValue="value"
-          filter
-          onFilter={onFromFilter}
-          filterBy="label"
-          display="chip"
-          placeholder={selectedFroms.length > 0 
-            ? `${selectedFroms.length} origins selected` 
-            : 'Search departure...'}
-          selectedItemsLabel="{0} origins selected"
-          className="w-full text-sm"
-          showSelectAll
-          maxSelectedLabels={3}
-          loading={isLoadingFrom}
-          emptyFilterMessage="No origins found"
-        />
-      </div>
-
-      {/* To */}
-      <div className="to min-w-[150px]">
-        <MultiSelect
-          value={selectedTos}
-          onChange={(e) => setSelectedTos(e.value)}
-          options={toSuggestions}
-          optionLabel="label"
-          optionValue="value"
-          filter
-          onFilter={onToFilter}
-          filterBy="label"
-          display="chip"
-          placeholder={selectedTos.length > 0 
-            ? `${selectedTos.length} destinations selected` 
-            : 'Search destination...'}
-          selectedItemsLabel="{0} destinations selected"
-          className="w-full text-sm"
-          showSelectAll
-          maxSelectedLabels={3}
-          loading={isLoadingTo}
-          emptyFilterMessage="No destinations found"
-          disabled={loadingFilters}
-        />
-      </div>
-
-      {/* Transport Type */}
-      <div className="transport-type min-w-[150px]">
-        <MultiSelect
-          value={selectedTransportTypes}
-          onChange={(e) => setSelectedTransportTypes(e.value)}
-          options={useMemo(() => {
-            const suggestionOptions = transportTypeSuggestions.map(s => ({
-              label: s.label || s.transport_type || s,
-              value: s.transport_type || s.value || s
-            }));
-            const existingOptions = selectedTransportTypes
-              .filter(val => !suggestionOptions.some(opt => opt.value === val))
-              .map(val => ({ label: val, value: val }));
+                    <h2 className="text-2xl font-extrabold text-gray-900 flex items-center gap-2">
+                        Enter Your Query
+                    </h2>
+                    <p className="text-sm text-gray-500">
+                        Set conditions to filter and analyze your data efficiently.
+                    </p>
+                </div>
+            </Card>
             
-            return [...suggestionOptions, ...existingOptions];
-          }, [selectedTransportTypes, transportTypeSuggestions])}
-          optionLabel="label"
-          optionValue="value"
-          display="chip"
-          placeholder={selectedTransportTypes.length > 0 
-            ? `${selectedTransportTypes.length} transport types selected` 
-            : 'Search transport type...'}
-          selectedItemsLabel="{0} transport types selected"
-          className="w-full text-sm"
-          filter
-          onFilter={onTransportTypeFilter}
-          filterBy="label"
-          showSelectAll
-          maxSelectedLabels={3}
-          loading={isLoadingTransport}
-          emptyFilterMessage="No transport types found"
-        />
-      </div>
-
-      {/* Operator */}
-      <div className="operator min-w-[150px]">
-        <MultiSelect
-          value={selectedOperators}
-          onChange={(e) => setSelectedOperators(e.value)}
-          options={useMemo(() => {
-            const suggestionOptions = operatorSuggestions.map(s => ({
-              label: s.label || s.operator_name || s,
-              value: s.operator_name || s.value || s
-            }));
-            const existingOptions = selectedOperators
-              .filter(val => !suggestionOptions.some(opt => opt.value === val))
-              .map(val => ({ label: val, value: val }));
-            
-            return [...suggestionOptions, ...existingOptions];
-          }, [selectedOperators, operatorSuggestions])}
-          optionLabel="label"
-          optionValue="value"
-          display="chip"
-          placeholder={selectedOperators.length > 0 
-            ? `${selectedOperators.length} operators selected` 
-            : 'Search operator...'}
-          selectedItemsLabel="{0} operators selected"
-          className="w-full text-sm"
-          filter
-          onFilter={onOperatorFilter}
-          filterBy="label"
-          showSelectAll
-          maxSelectedLabels={3}
-          loading={isLoadingOperator}
-          emptyFilterMessage="No operators found"
-        />
-      </div>
-
-      {/* Submit */}
-      <div className="submit" style={{marginTop:'2px'}}>
-        <Button label="Apply" icon="pi pi-check" onClick={handleRunQuery} style={{backgroundColor:'#007bff',color:'white',borderRadius:'5px',padding:'10px'}} />
-      </div>
-    </div>
-
-    <h2 className="text-2xl font-extrabold text-gray-900 flex items-center gap-2">
-      Enter Your Query
-    </h2>
-    <p className="text-sm text-gray-500">
-      Set conditions to filter and analyze your data efficiently.
-    </p>
-  </div>
-
-  {/* Error Message */}
-  {error && (
-    <div className="p-3 bg-red-100 text-red-800 border-round-md mb-4 text-sm font-medium">
-      {error}
-    </div>
-  )}
-
-  {/* Query Conditions */}
-  <div className="flex flex-col gap-4 mb-6">
-    {conditions.map((condition, index) => (
-      <div
-        key={index}
-        className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center bg-gray-50 p-4 rounded-lg shadow-sm"
-      >
-        {index > 0 && (
-          <div className="md:col-span-1 text-gray-400 font-medium text-center hidden md:block">
-            AND
-          </div>
-        )}
-
-        {/* Field Dropdown */}
-        <div className="md:col-span-3">
-          <Dropdown
-            value={condition.field}
-            options={fields}
-            onChange={(e) => updateCondition(index, 'field', e.value)}
-            placeholder="Field"
-            className="w-full"
-          />
+            <div className="mt-8">
+                <Card className="shadow-4 border-round-2xl p-6 bg-white/80 backdrop-blur-sm">
+                    <div className="p-4 border-bottom-1 surface-border">
+                        <h2 className="text-xl font-semibold m-0">Query Results</h2>
+                        <p className="text-sm text-gray-600 mt-1">
+                            {totalRecords > 0 ? `${totalRecords} records found` : 'No records found'}
+                        </p>
+                    </div>
+                    {error && (
+                        <div className="p-3 bg-red-100 text-red-800 border-round-md mb-4 text-sm font-medium">
+                            {error}
+                        </div>
+                    )}
+                    <div className="card">
+                        <DataTable
+                            value={results}
+                            loading={loading}
+                            paginator
+                            rows={lazyParams.rows}
+                            first={lazyParams.first}
+                            rowsPerPageOptions={[10, 25, 50]}
+                            lazy
+                            totalRecords={totalRecords}
+                            tableStyle={{ minWidth: '50rem' }}
+                            emptyMessage="No results to display."
+                            onPage={(e) => {
+                                setLazyParams({ ...e, sortField: lazyParams.sortField, sortOrder: lazyParams.sortOrder });
+                                fetchData({ ...e, sortField: lazyParams.sortField, sortOrder: lazyParams.sortOrder });
+                            }}
+                            onSort={(e) => {
+                                setLazyParams({ ...e });
+                                fetchData({ ...e });
+                            }}
+                            scrollable 
+                            scrollHeight="400px" 
+                        >
+                            {getColumns(results)}
+                        </DataTable>
+                    </div>
+                </Card>
+            </div>
         </div>
-
-        {/* Operator Dropdown */}
-        <div className="md:col-span-3">
-          <Dropdown
-            value={condition.operator}
-            options={operators}
-            onChange={(e) => updateCondition(index, 'operator', e.value)}
-            placeholder="Operator"
-            className="w-full"
-          />
-        </div>
-
-        {/* Value Input */}
-        <div className="md:col-span-4">
-          {['From', 'To'].includes(condition.field) ? (
-            <AutoComplete
-              value={condition.value}
-              suggestions={suggestions}
-              completeMethod={(e) => searchSuggestions(e, condition.field)}
-              onChange={(e) => updateCondition(index, 'value', e.value)}
-              placeholder={`Search ${condition.field}...`}
-              className="w-full"
-              dropdown
-              forceSelection
-            />
-          ) : (
-            <InputText
-              value={condition.value}
-              onChange={(e) => updateCondition(index, 'value', e.target.value)}
-              placeholder="Value"
-              className="w-full"
-            />
-          )}
-        </div>
-
-        {/* Remove Button */}
-        <div className="md:col-span-1 flex justify-end">
-          {conditions.length > 1 && (
-            <Button
-              icon="pi pi-times"
-              className="p-button-rounded p-button-danger p-button-outlined"
-              onClick={() => removeCondition(index)}
-              tooltip="Remove"
-            />
-          )}
-        </div>
-      </div>
-    ))}
-  </div>
-
-  {/* Actions */}
-  <div className="flex flex-wrap gap-4 justify-end">
-    <Button
-      label="Add Condition"
-      icon="pi pi-plus"
-      className="p-button-info p-button-outlined"
-      onClick={addCondition}
-    />
-    <Button
-      label="Run Query"
-      icon="pi pi-search"
-      className="p-button-success"
-      onClick={handleRunQuery}
-      loading={loading}
-    />
-  </div>
-</Card>
-
-    
-
-      {results.length > 0 && (
-       <div className="max-w-screen-xl mx-auto px-4">
-       <Card className="mt-6 shadow-3 border-round-lg overflow-hidden">
-         {/* Header Section */}
-         <div className="flex justify-between items-center p-4 border-bottom-1 surface-border">
-           <div>
-             <h2 className="text-xl font-semibold m-0">Query Results</h2>
-             <p className="text-sm text-gray-600 mt-1">{results.length} records found</p>
-           </div>
-           <div className="flex gap-2">
-             {/* <Button 
-              
-               icon="pi pi-chart-bar" 
-               label="Visualize"
-               className="p-button-outlined p-button-sm"
-               style={{
-                 backgroundColor: '#2acf7d',
-                 color: 'white',
-                 borderRadius: '6px',
-                 padding: '8px 14px',
-               }}
-               onClick={handleVisualizeClick}
-               disabled={results.length === 0}
-             /> */}
-             <Button 
-               icon="pi pi-download" 
-               label="Export"
-               className="p-button-outlined p-button-sm"
-               style={{
-                 backgroundColor: '#24A0ed',
-                 color: 'white',
-                 borderRadius: '6px',
-                 padding: '8px 14px',
-               }}
-               onClick={(e) => menuRef.current.toggle(e)}
-               aria-controls="export_menu"
-               aria-haspopup
-               disabled={results.length === 0}
-             />
-             <Menu
-               model={[
-                 { label: 'Export as CSV', icon: 'pi pi-file', command: exportToCSV },
-                 { label: 'Export as JSON', icon: 'pi pi-file-export', command: exportToJSON },
-               ]}
-               popup
-               ref={menuRef}
-               id="export_menu"
-             />
-           </div>
-         </div>
-     
-         {/* Results Table */}
-         <div className="w-full mt-8" style={{ minWidth: '100%', width: 'max-content', maxWidth: '100%' }}>
-           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
-             <div className="flex flex-col">
-               <h2 className="text-xl sm:text-2xl font-semibold text-700">Query Results</h2>
-               <div className="flex items-center gap-2 mt-1">
-                 <span className="text-sm font-medium">
-                   {results.length} {results.length === 1 ? 'result' : 'results'} found
-                 </span>
-               </div>
-             </div>
-             {results.length > 0 && (
-               <div className="flex items-center gap-2">
-                 <Button
-                   type="button"
-                   icon="pi pi-download"
-                   label="Export to CSV"
-                   className="p-button-outlined p-button-sm"
-                   onClick={exportToCSV}
-                 />
-               </div>
-             )}
-           </div>
-
-           {/* Search Input */}
-           <div className="relative w-full mb-4">
-             <span className="p-input-icon-right w-full">
-               <InputText
-                 placeholder="Search results..."
-                 className="p-inputtext-sm w-full"
-                 style={{ paddingRight: '2rem' }}
-               />
-               <i className="pi pi-search" style={{ right: '1rem', color: '#6c757d', pointerEvents: 'none' }} />
-             </span>
-           </div>
-
-           {loading ? (
-             <div className="flex justify-center items-center p-8">
-               <i className="pi pi-spin pi-spinner text-2xl text-blue-500"></i>
-               <span className="ml-2">Loading results...</span>
-             </div>
-           ) : error ? (
-             <div className="p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">
-               <i className="pi pi-exclamation-triangle mr-2"></i>
-               {error}
-             </div>
-           ) : results.length > 0 ? (
-             <div className="relative rounded-lg border border-gray-200 bg-white w-full">
-               <div className="overflow-x-auto" style={{ width: '100%', maxWidth: '100vw' }}>
-                 <table className="text-sm text-left" style={{ minWidth: '100%', width: 'auto' }}>
-                   <thead className="text-xs text-gray-700 bg-gray-50">
-                     <tr>
-                       {Object.keys(results[0]).map((key) => (
-                         <th 
-                           key={key}
-                           className="px-6 py-3 font-medium text-gray-600 uppercase tracking-wider"
-                           style={{ minWidth: '120px' }}
-                         >
-                           <div className="flex items-center justify-between">
-                             <span>{key}</span>
-                             <button 
-                               className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"
-                               onClick={() => handleSort(key)}
-                             >
-                               <i className="pi pi-sort-alt text-xs"></i>
-                             </button>
-                           </div>
-                         </th>
-                       ))}
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y divide-gray-200">
-                     {results.map((row, rowIndex) => (
-                       <tr 
-                         key={rowIndex}
-                         className="bg-white hover:bg-gray-50 transition-colors"
-                       >
-                         {Object.entries(row).map(([key, value], colIndex) => (
-                           <td 
-                             key={`${rowIndex}-${colIndex}`}
-                             className="px-6 py-4 whitespace-nowrap text-sm text-gray-800"
-                             title={String(value)}
-                           >
-                             <div className="max-w-xs truncate" title={String(value)}>
-                               {formatCellValue(value, key)}
-                             </div>
-                           </td>
-                         ))}
-                       </tr>
-                     ))}
-                   </tbody>
-                 </table>
-               </div>
-
-               {/* Pagination */}
-               {results.length > 10 && (
-                 <div className="px-6 py-3 bg-white border-t border-gray-200 flex items-center justify-between">
-                   <div className="flex-1 flex justify-between sm:hidden">
-                     <button className="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                       Previous
-                     </button>
-                     <button className="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
-                       Next
-                     </button>
-                   </div>
-                   <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                     <div>
-                       <p className="text-sm text-gray-700">
-                         Showing <span className="font-medium">1</span> to{' '}
-                         <span className="font-medium">{Math.min(10, results.length)}</span> of{' '}
-                         <span className="font-medium">{results.length}</span> results
-                       </p>
-                     </div>
-                     <div>
-                       <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                         <button className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                           <span className="sr-only">Previous</span>
-                           <i className="pi pi-chevron-left"></i>
-                         </button>
-                         <button className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-blue-600 hover:bg-gray-50">
-                           1
-                         </button>
-                         <button className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50">
-                           <span className="sr-only">Next</span>
-                           <i className="pi pi-chevron-right"></i>
-                         </button>
-                       </nav>
-                     </div>
-                   </div>
-                 </div>
-               )}
-             </div>
-           ) : (
-             <div className="p-8 text-center text-gray-500 bg-white rounded-lg border border-gray-200">
-               <i className="pi pi-inbox text-4xl text-gray-300 mb-2"></i>
-               <p className="text-gray-600">No results found. Try adjusting your filters.</p>
-             </div>
-           )}
-         </div>
-       </Card>
-     </div>
-     )}
-    </div>
-  );
+    );
 };
 
 export default QueryBuilder;
