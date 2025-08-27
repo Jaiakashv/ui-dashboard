@@ -883,26 +883,26 @@ const ComparePage = () => {
   const updateURL = useCallback(() => {
     const params = new URLSearchParams();
 
-    if (selectedTimeline) params.set('timeline', selectedTimeline);
     if (selectedFroms.length > 0) params.set('from', selectedFroms.join(','));
     if (selectedTos.length > 0) params.set('to', selectedTos.join(','));
     if (selectedTransportTypes.length > 0) params.set('transport', selectedTransportTypes.join(','));
     if (selectedOperators.length > 0) params.set('operator', selectedOperators.join(','));
 
-    // Use local date formatting (YYYY-MM-DD) instead of toISOString()
-    if (Array.isArray(customRange) && customRange.length === 2) {
-      const [startDate, endDate] = customRange;
-      if (startDate instanceof Date && !isNaN(startDate.getTime())) {
-        params.set('startDate', formatDateLocal(startDate));
-      }
-      if (endDate instanceof Date && !isNaN(endDate.getTime())) {
-        params.set('endDate', formatDateLocal(endDate));
+    // Handle date parameters
+    if (selectedTimeline === 'Custom' && customRange) {
+      if (Array.isArray(customRange)) {
+        if (customRange[0] && !customRange[1]) {
+          // Single date selection
+          const selectedDate = formatDate(customRange[0]);
+          params.set('startDate', selectedDate);
+          params.set('endDate', selectedDate);
+        } else if (customRange[0] && customRange[1]) {
+          // Date range selection
+          params.set('startDate', formatDate(customRange[0]));
+          params.set('endDate', formatDate(new Date(customRange[1].getTime() + 24 * 60 * 60 * 1000 - 1)));
+        }
       }
     }
-
-    if (selectedDateField) params.set('dateField', selectedDateField);
-
-    // Sidebar selections
     if (selectedColumn) params.set('column', selectedColumn);
     if (selectedColumns.length > 0) {
       params.set('columns', selectedColumns.map(col => col.id).join(','));
@@ -1042,41 +1042,35 @@ const ComparePage = () => {
     location.search
   ]);
 
+  // Format date to YYYY-MM-DD in local timezone
+  const formatDate = (date) => {
+    const d = new Date(date);
+    const localDate = new Date(d.getTime() - (d.getTimezoneOffset() * 60000));
+    return localDate.toISOString().split('T')[0];
+  };
+
   const getDateRange = useCallback(() => {
     const presets = {
       'Today': () => {
         const start = new Date();
-        start.setHours(0,0,0,0);
+        start.setHours(0, 0, 0, 0);
         const end = new Date();
-        end.setHours(23,59,59,999);
+        end.setHours(23, 59, 59, 999);
         return { start, end };
       },
       'Tomorrow': () => {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const start = new Date(tomorrow);
-        start.setHours(0,0,0,0);
-        const end = new Date(tomorrow);
-        end.setHours(23,59,59,999);
-        return { start, end };
-      },
-      'This Month': () => {
-        const now = new Date();
-        const start = new Date(now.getFullYear(), now.getMonth(), 1);
-        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-        return { start, end };
-      },
-      'This Year': () => {
-        const now = new Date();
-        const start = new Date(now.getFullYear(), 0, 1);
-        const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+        const start = new Date();
+        start.setDate(start.getDate() + 1);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setHours(23, 59, 59, 999);
         return { start, end };
       },
       'Next 7 Days': () => {
         const start = new Date();
         start.setHours(0, 0, 0, 0);
         const end = new Date();
-        end.setDate(end.getDate() + 6);
+        end.setDate(end.getDate() + 7);
         end.setHours(23, 59, 59, 999);
         return { start, end };
       },
@@ -1084,33 +1078,51 @@ const ComparePage = () => {
         const start = new Date();
         start.setHours(0, 0, 0, 0);
         const end = new Date();
-        end.setDate(end.getDate() + 13);
+        end.setDate(end.getDate() + 14);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      },
+      'This Month': () => {
+        const start = new Date();
+        start.setDate(1);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      },
+      'This Year': () => {
+        const start = new Date();
+        start.setMonth(0, 1);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start.getFullYear(), 11, 31);
         end.setHours(23, 59, 59, 999);
         return { start, end };
       }
     };
 
-    if (selectedTimeline === 'Custom') {
+    if (selectedTimeline === 'Custom' && customRange) {
+      // Handle both single date and date range
       if (Array.isArray(customRange)) {
-        if (customRange[0] && customRange[1]) {
-          const start = new Date(customRange[0]);
+        if (customRange[0] && !customRange[1]) {
+          // Single date selection
+          const selectedDate = new Date(customRange[0]);
+          const formattedDate = formatDate(selectedDate);
+          const start = new Date(formattedDate);
           start.setHours(0, 0, 0, 0);
-          const end = new Date(customRange[1]);
+          const end = new Date(formattedDate);
           end.setHours(23, 59, 59, 999);
           return { start, end };
-        } else if (customRange[0]) {
-          const start = new Date(customRange[0]);
+        } else if (customRange[0] && customRange[1]) {
+          // Date range selection
+          const startDate = formatDate(customRange[0]);
+          const endDate = formatDate(new Date(customRange[1].getTime() + 24 * 60 * 60 * 1000 - 1));
+          
+          const start = new Date(startDate);
           start.setHours(0, 0, 0, 0);
-          const end = new Date(customRange[0]);
+          const end = new Date(endDate);
           end.setHours(23, 59, 59, 999);
           return { start, end };
         }
-      } else if (customRange instanceof Date) {
-        const start = new Date(customRange);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(customRange);
-        end.setHours(23, 59, 59, 999);
-        return { start, end };
       }
       return { start: null, end: null };
     }
