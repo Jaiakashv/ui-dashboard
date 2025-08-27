@@ -7,7 +7,6 @@ import { MultiSelect } from 'primereact/multiselect';
 import { Calendar } from 'primereact/calendar';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
-import { saveAs } from 'file-saver';
 
 // Define the new timeline options
 const timelineOptions = [
@@ -22,15 +21,16 @@ const timelineOptions = [
 
 // Corrected fieldOptions for the custom query dropdown
 const fieldOptions = [
-    { label: 'Departure Date', value: 'departure_time' },
-    { label: 'Arrival Date', value: 'arrival_time' },
-    { label: 'Duration', value: 'duration_min' }, // FIX 1: Corrected field name
+    { label: 'Departure Time', value: 'departure_time' },
+    { label: 'Arrival Time', value: 'arrival_time' },
+    { label: 'Travel Date', value: 'travel_date' },
+    { label: 'Duration', value: 'duration_min' }, 
     { label: 'Price', value: 'price_inr' },
     { label: 'Transport Type', value: 'transport_type' },
     { label: 'Operator', value: 'operator_name' },
     { label: 'Origin', value: 'origin' },
     { label: 'Destination', value: 'destination' },
-    { label: 'Route URL', value: 'route_url' },
+    { label: 'Route URL', value: 'route_url' }
 ];
 
 const operatorOptions = [
@@ -38,7 +38,7 @@ const operatorOptions = [
     { label: 'Not Equals', value: '!=' },
     { label: 'Greater Than', value: '>' },
     { label: 'Less Than', value: '<' },
-    { label: 'Contains', value: 'ILIKE' },
+    { label: 'Contains', value: 'ILIKE' }
 ];
 
 // Helper function to parse URL params into an array
@@ -156,16 +156,55 @@ const QueryBuilder = () => {
             urlParams.append('query_conditions', JSON.stringify(conditions));
         }
         
-        if (selectedTimeline === 'Custom' && customRange && customRange[0] && customRange[1]) {
+        if (selectedTimeline === 'Custom' && customRange) {
+            // Format dates to YYYY-MM-DD in local timezone
             const formatDate = (date) => {
                 const d = new Date(date);
-                const day = String(d.getDate()).padStart(2, '0');
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const year = d.getFullYear();
-                return `${year}-${month}-${day}`;
+                const localDate = new Date(d.getTime() - (d.getTimezoneOffset() * 60000));
+                return localDate.toISOString().split('T')[0];
             };
-            urlParams.append('start_date', formatDate(customRange[0]));
-            urlParams.append('end_date', formatDate(customRange[1]));
+            
+            let dateConditions = [...conditions];
+            
+            // Handle both single date and date range
+            if (customRange[0] && !customRange[1]) {
+                // Single date selection
+                const selectedDate = formatDate(customRange[0]);
+                urlParams.append('start_date', selectedDate);
+                urlParams.append('end_date', selectedDate);
+                
+                dateConditions.push(
+                    {
+                        field: 'travel_date',
+                        operator: '=',
+                        value: selectedDate
+                    }
+                );
+            } else if (customRange[0] && customRange[1]) {
+                // Date range selection
+                const startDate = formatDate(customRange[0]);
+                const endDate = formatDate(new Date(customRange[1].getTime() + 24 * 60 * 60 * 1000 - 1));
+                
+                urlParams.append('start_date', startDate);
+                urlParams.append('end_date', endDate);
+                
+                dateConditions.push(
+                    {
+                        field: 'travel_date',
+                        operator: '>=',
+                        value: startDate
+                    },
+                    {
+                        field: 'travel_date',
+                        operator: '<=',
+                        value: endDate
+                    }
+                );
+            }
+            
+            if (dateConditions.length > 0) {
+                urlParams.set('query_conditions', JSON.stringify(dateConditions));
+            }
         } else if (selectedTimeline) {
             urlParams.append('timeline', selectedTimeline);
         }
@@ -188,8 +227,17 @@ const QueryBuilder = () => {
             }
 
             setResults(result.data || []);
-            setTotalRecords(result.pagination.total);
+            const newTotalRecords = result.pagination.total;
+            setTotalRecords(newTotalRecords);
             
+            // Add this line to log the total records received from the API
+            console.log('API returned Total Records:', newTotalRecords);
+
+            // FIX: If the current 'first' index is out of bounds for the new total, reset pagination
+            if (params.first >= newTotalRecords && newTotalRecords > 0) {
+                setLazyParams(prev => ({ ...prev, first: 0, page: 0 }));
+            }
+
         } catch (error) {
             console.error('Error fetching data:', error);
             setError(error.message || 'An error occurred while fetching data');
@@ -214,7 +262,7 @@ const QueryBuilder = () => {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         // Remove existing filter parameters before adding new ones
-        ['origin', 'destination', 'transport_type', 'operator_name', 'timeline', 'query_conditions', 'first', 'rows', 'page', 'sort_by', 'sort_order'].forEach(param => params.delete(param));
+        ['origin', 'destination', 'transport_type', 'operator_name', 'timeline', 'query_conditions', 'first', 'rows', 'page', 'sort_by', 'sort_order', 'start_date', 'end_date'].forEach(param => params.delete(param));
         
         if (selectedFroms.length > 0) params.append('origin', selectedFroms.join(','));
         if (selectedTos.length > 0) params.append('destination', selectedTos.join(','));
@@ -223,6 +271,16 @@ const QueryBuilder = () => {
         
         if (selectedTimeline && selectedTimeline !== 'Custom') {
           params.append('timeline', selectedTimeline);
+        } else if (selectedTimeline === 'Custom' && customRange && customRange[0] && customRange[1]) {
+            const formatDate = (date) => {
+                const d = new Date(date);
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+            params.append('start_date', formatDate(customRange[0]));
+            params.append('end_date', formatDate(customRange[1]));
         }
         
         if (conditions.some(c => c.field && c.operator && c.value)) {
@@ -238,7 +296,7 @@ const QueryBuilder = () => {
         const newUrl = `${window.location.pathname}?${params.toString()}`;
         window.history.pushState({}, '', newUrl);
         
-    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline, conditions, lazyParams]);
+    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline, customRange, conditions, lazyParams]);
 
     const handleRunQuery = () => {
         // Reset to first page and trigger a new fetch
@@ -260,68 +318,83 @@ const QueryBuilder = () => {
         newConditions[index] = { ...newConditions[index], [field]: value };
         setConditions(newConditions);
     };
-
-    const formatCellValue = (value, field) => {
-        if (value === null || value === undefined) return '-';
-        
-        // Format Departure and Arrival dates
-        if (field === 'departure_time' || field === 'arrival_time') {
-            try {
-                const date = new Date(value);
-                const day = String(date.getDate()).padStart(2, '0');
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const year = date.getFullYear();
-                return `${day}-${month}-${year}`;
-            } catch (e) {
-                console.error(`Error formatting date for field ${field}:`, e);
-                return 'Invalid Date';
+    
+    // A mapping of field names to their display properties
+    const columnMap = {
+        'route_url': { header: 'Route URL', body: (rowData) => <a href={rowData.route_url} target="_blank" rel="noopener noreferrer">View Route</a> },
+        'travel_date': { 
+            header: 'Travel Date',
+            body: (rowData) => {
+                try {
+                    const date = new Date(rowData.travel_date);
+                    // Format as YYYY-MM-DD in local timezone
+                    return date.toLocaleDateString('en-CA'); // en-CA gives YYYY-MM-DD format
+                } catch (e) {
+                    return rowData.travel_date || 'Invalid Date';
+                }
             }
-        }
-        
-        // Format price
-        if (field === 'price_inr' && typeof value === 'number') {
-            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'INR' }).format(value);
-        }
-        
-        // Format duration
-        if (field === 'duration_min' && typeof value === 'number') { // FIX 2: Corrected field name
-            const hours = Math.floor(value / 60);
-            const minutes = value % 60;
-            return `${hours}h ${minutes}m`;
-        }
-        
-        // Format URL
-        if (field === 'route_url') {
-            return <a href={value} target="_blank" rel="noopener noreferrer">View Route</a>;
-        }
-        
-        return String(value);
+        },
+        'origin': { header: 'Origin' },
+        'destination': { header: 'Destination' },
+        'price_inr': { header: 'Price', body: (rowData) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'INR' }).format(rowData.price_inr) },
+        'departure_time': { header: 'Departure Time', body: (rowData) => {
+            try {
+                const date = new Date(rowData.departure_time);
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                return `${hours}:${minutes}`;
+            } catch (e) {
+                return 'Invalid Time';
+            }
+        }},
+        'arrival_time': { header: 'Arrival Time', body: (rowData) => {
+            try {
+                const date = new Date(rowData.arrival_time);
+                const hours = String(date.getHours()).padStart(2, '0');
+                const minutes = String(date.getMinutes()).padStart(2, '0');
+                return `${hours}:${minutes}`;
+            } catch (e) {
+                return 'Invalid Time';
+            }
+        }},
+        'transport_type': { header: 'Transport Type' },
+        'duration_min': { header: 'Duration', body: (rowData) => {
+            if (typeof rowData.duration_min === 'number') {
+                const hours = Math.floor(rowData.duration_min / 60);
+                const minutes = rowData.duration_min % 60;
+                return `${hours}h ${minutes}m`;
+            }
+            return rowData.duration_min;
+        }},
+        'operator_name': { header: 'Operator Name' },
+        'provider': { header: 'Provider' },
     };
 
-    const getColumns = () => {
-        const columnsToShow = [
-            { field: 'route_url', header: 'Route URL' },
-            { field: 'travel_date', header: 'Travel Date' },
-            { field: 'origin', header: 'Origin' },
-            { field: 'destination', header: 'Destination' },
-            { field: 'price_inr', header: 'Price' },
-            { field: 'departure_time', header: 'Departure Date' },
-            { field: 'arrival_time', header: 'Arrival Date' },
-            { field: 'transport_type', header: 'Transport Type' },
-            { field: 'duration_min', header: 'Duration' }, // FIX 3: Corrected field name
-            { field: 'operator_name', header: 'Operator Name' },
-            { field: 'provider', header: 'Provider' },
-        ];
-    
-        return columnsToShow.map(col => (
-            <Column
-                key={col.field}
-                field={col.field}
-                header={col.header}
-                body={(rowData) => formatCellValue(rowData[col.field], col.field)}
-                sortable
-            />
-        ));
+    const getColumns = (conditions) => {
+        const dynamicFields = conditions.filter(c => c.field).map(c => c.field);
+        
+        // Define a set of essential columns that should always be visible
+        const essentialFields = new Set([
+            'route_url', 'travel_date', 'origin', 'destination', 'price_inr', 'departure_time'
+        ]);
+        
+        // Combine essential fields with dynamically selected fields
+        const allFields = [...new Set([...essentialFields, ...dynamicFields])];
+        
+        return allFields.map(field => {
+            const columnInfo = columnMap[field];
+            if (!columnInfo) return null; // Fallback for fields not in the map
+            
+            return (
+                <Column
+                    key={field}
+                    field={field}
+                    header={columnInfo.header}
+                    body={columnInfo.body}
+                    sortable
+                />
+            );
+        }).filter(Boolean); // Filter out any null values
     };
 
     return (
@@ -445,16 +518,36 @@ const QueryBuilder = () => {
                                     placeholder="Operator"
                                     className="p-inputgroup-addon flex-grow-1"
                                 />
+                                {/* Conditional rendering for Calendar based on field */}
                                 {condition.field === 'departure_time' || condition.field === 'arrival_time' ? (
                                     <Calendar
-                                        value={condition.value ? new Date(condition.value.split('-').reverse().join('-')) : null}
+                                        value={condition.value ? new Date(`1970-01-01T${condition.value}`) : null}
+                                        onChange={(e) => {
+                                            const date = e.value;
+                                            if (date) {
+                                                const hours = String(date.getHours()).padStart(2, '0');
+                                                const minutes = String(date.getMinutes()).padStart(2, '0');
+                                                const seconds = String(date.getSeconds()).padStart(2, '0');
+                                                updateCondition(index, 'value', `${hours}:${minutes}:${seconds}`);
+                                            } else {
+                                                updateCondition(index, 'value', '');
+                                            }
+                                        }}
+                                        timeOnly
+                                        showTime
+                                        placeholder="Select a time"
+                                        readOnlyInput
+                                    />
+                                ) : condition.field === 'travel_date' ? (
+                                    <Calendar
+                                        value={condition.value ? new Date(condition.value) : null}
                                         onChange={(e) => {
                                             const date = e.value;
                                             if (date) {
                                                 const day = String(date.getDate()).padStart(2, '0');
                                                 const month = String(date.getMonth() + 1).padStart(2, '0');
                                                 const year = date.getFullYear();
-                                                updateCondition(index, 'value', `${day}-${month}-${year}`);
+                                                updateCondition(index, 'value', `${year}-${month}-${day}`);
                                             } else {
                                                 updateCondition(index, 'value', '');
                                             }
@@ -533,7 +626,7 @@ const QueryBuilder = () => {
                             scrollable 
                             scrollHeight="400px" 
                         >
-                            {getColumns()}
+                            {getColumns(conditions)}
                         </DataTable>
                     </div>
                 </Card>
