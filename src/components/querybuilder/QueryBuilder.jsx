@@ -141,8 +141,11 @@ const QueryBuilder = () => {
         setError('');
         
         const urlParams = new URLSearchParams();
-        urlParams.append('page', params.page + 1);
-        urlParams.append('limit', params.rows);
+        const page = Number.isInteger(params.page) ? params.page : 0;
+        const rows = Number.isInteger(params.rows) ? params.rows : 50; // Default to 50 if invalid
+        
+        urlParams.append('page', page + 1);
+        urlParams.append('limit', rows);
         urlParams.append('sort_by', params.sortField);
         urlParams.append('sort_order', params.sortOrder === 1 ? 'ASC' : 'DESC');
 
@@ -287,10 +290,15 @@ const QueryBuilder = () => {
             params.append('query_conditions', JSON.stringify(conditions));
         }
 
-        params.append('first', lazyParams.first);
-        params.append('rows', lazyParams.rows);
-        params.append('page', lazyParams.page);
-        params.append('sort_by', lazyParams.sortField);
+        // Ensure we have valid numbers for pagination
+        const first = Number.isInteger(lazyParams.first) ? lazyParams.first : 0;
+        const rows = Number.isInteger(lazyParams.rows) ? lazyParams.rows : 50;
+        const page = Number.isInteger(lazyParams.page) ? lazyParams.page : 0;
+        
+        params.append('first', first);
+        params.append('rows', rows);
+        params.append('page', page);
+        params.append('sort_by', lazyParams.sortField || 'departure_time');
         params.append('sort_order', lazyParams.sortOrder === 1 ? 'ASC' : 'DESC');
 
         const newUrl = `${window.location.pathname}?${params.toString()}`;
@@ -375,7 +383,8 @@ const QueryBuilder = () => {
         
         // Define a set of essential columns that should always be visible
         const essentialFields = new Set([
-            'route_url', 'travel_date', 'origin', 'destination', 'price_inr', 'departure_time'
+            'route_url', 'travel_date', 'origin', 'destination', 'price_inr', 
+            'departure_time', 'arrival_time','duration_min', 'provider','transport_type', 'operator_name'
         ]);
         
         // Combine essential fields with dynamically selected fields
@@ -617,14 +626,25 @@ const QueryBuilder = () => {
                             totalRecords={totalRecords}
                             tableStyle={{ minWidth: '50rem' }}
                             emptyMessage="No results to display."
+                            sortField={lazyParams.sortField}
+                            sortOrder={lazyParams.sortOrder}
                             onPage={(e) => {
-                                setLazyParams({ ...e, sortField: lazyParams.sortField, sortOrder: lazyParams.sortOrder });
+                                setLazyParams(prev => ({ ...prev, ...e }));
+                                setTriggerFetch(prev => prev + 1);
                             }}
                             onSort={(e) => {
-                                setLazyParams({ ...e });
+                                setLazyParams(prev => ({
+                                    ...prev,
+                                    sortField: e.sortField,
+                                    sortOrder: e.sortOrder,
+                                    first: 0, // Reset to first page when sorting
+                                    page: 0   // Reset page number
+                                }));
+                                setTriggerFetch(prev => prev + 1);
                             }}
                             scrollable 
-                            scrollHeight="400px" 
+                            scrollHeight="400px"
+                            sortMode="single"
                         >
                             {getColumns(conditions)}
                         </DataTable>
