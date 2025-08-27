@@ -3,10 +3,8 @@ import { Card } from 'primereact/card';
 import { Dropdown } from 'primereact/dropdown';
 import { Button } from 'primereact/button';
 import { InputText } from 'primereact/inputtext';
-import { AutoComplete } from 'primereact/autocomplete';
 import { MultiSelect } from 'primereact/multiselect';
 import { Calendar } from 'primereact/calendar';
-import { Menu } from 'primereact/menu';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { saveAs } from 'file-saver';
@@ -20,6 +18,27 @@ const timelineOptions = [
     'This Month',
     'This Year',
     'Custom'
+];
+
+// Corrected fieldOptions for the custom query dropdown
+const fieldOptions = [
+    { label: 'Departure Date', value: 'departure_time' },
+    { label: 'Arrival Date', value: 'arrival_time' },
+    { label: 'Duration', value: 'duration_min' }, // FIX 1: Corrected field name
+    { label: 'Price', value: 'price_inr' },
+    { label: 'Transport Type', value: 'transport_type' },
+    { label: 'Operator', value: 'operator_name' },
+    { label: 'Origin', value: 'origin' },
+    { label: 'Destination', value: 'destination' },
+    { label: 'Route URL', value: 'route_url' },
+];
+
+const operatorOptions = [
+    { label: 'Equals', value: '=' },
+    { label: 'Not Equals', value: '!=' },
+    { label: 'Greater Than', value: '>' },
+    { label: 'Less Than', value: '<' },
+    { label: 'Contains', value: 'ILIKE' },
 ];
 
 // Helper function to parse URL params into an array
@@ -37,7 +56,6 @@ const getSingleParam = (paramName, defaultValue) => {
 
 const QueryBuilder = () => {
     // State management for query and filters, now initialized from URL
-    const [conditions, setConditions] = useState([{ field: '', operator: '=', value: '' }]);
     const [selectedTimeline, setSelectedTimeline] = useState(getSingleParam('timeline', 'Next 14 Days'));
     const [selectedFroms, setSelectedFroms] = useState(getParamsAsArray('origin'));
     const [selectedTos, setSelectedTos] = useState(getParamsAsArray('destination'));
@@ -47,6 +65,18 @@ const QueryBuilder = () => {
     const [loadingFilters, setLoadingFilters] = useState(false);
     const [customRange, setCustomRange] = useState(null); 
     
+    // State management for custom conditions
+    const initialConditions = useMemo(() => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            const conditionsString = params.get('query_conditions');
+            return conditionsString ? JSON.parse(conditionsString) : [{ field: '', operator: '=', value: '' }];
+        } catch {
+            return [{ field: '', operator: '=', value: '' }];
+        }
+    }, []);
+    const [conditions, setConditions] = useState(initialConditions);
+
     // State management for results
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -66,6 +96,9 @@ const QueryBuilder = () => {
     const [toSuggestions, setToSuggestions] = useState([]);
     const [transportTypeSuggestions, setTransportTypeSuggestions] = useState([]);
     const [operatorSuggestions, setOperatorSuggestions] = useState([]);
+    
+    // This state is to control when a data fetch should happen
+    const [triggerFetch, setTriggerFetch] = useState(0);
 
     const fetchFilterOptions = useCallback(async () => {
         setLoadingFilters(true);
@@ -108,7 +141,7 @@ const QueryBuilder = () => {
         setError('');
         
         const urlParams = new URLSearchParams();
-        urlParams.append('page', params.page + 1); // DataTable page is 0-indexed, API is 1-indexed
+        urlParams.append('page', params.page + 1);
         urlParams.append('limit', params.rows);
         urlParams.append('sort_by', params.sortField);
         urlParams.append('sort_order', params.sortOrder === 1 ? 'ASC' : 'DESC');
@@ -117,6 +150,11 @@ const QueryBuilder = () => {
         if (selectedTos.length > 0) { urlParams.append('destination', selectedTos.join(',')); }
         if (selectedTransportTypes.length > 0) { urlParams.append('transport_type', selectedTransportTypes.join(',')); }
         if (selectedOperators.length > 0) { urlParams.append('operator_name', selectedOperators.join(',')); }
+
+        // Add custom query conditions as a JSON string
+        if (conditions.some(c => c.field && c.operator && c.value)) {
+            urlParams.append('query_conditions', JSON.stringify(conditions));
+        }
         
         if (selectedTimeline === 'Custom' && customRange && customRange[0] && customRange[1]) {
             const formatDate = (date) => {
@@ -158,47 +196,25 @@ const QueryBuilder = () => {
         } finally {
             setLoading(false);
         }
-    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline, customRange]);
+    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline, customRange, conditions]);
 
-    // 1. Fetch filter options on mount (runs once)
+    // This effect runs ONLY on component mount to fetch filter options
     useEffect(() => {
         fetchFilterOptions();
     }, [fetchFilterOptions]);
     
-    // 2. This effect runs ONLY on component mount to read URL params and set initial state.
-    // It's the only place where fetchData is called directly on load.
+    // This effect handles both initial data fetch and subsequent fetches when filters change
     useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const newFroms = urlParams.get('origin') ? urlParams.get('origin').split(',') : [];
-        const newTos = urlParams.get('destination') ? urlParams.get('destination').split(',') : [];
-        const newTransportTypes = urlParams.get('transport_type') ? urlParams.get('transport_type').split(',') : [];
-        const newOperators = urlParams.get('operator_name') ? urlParams.get('operator_name').split(',') : [];
-        const newTimeline = urlParams.get('timeline') || 'Next 14 Days';
-        
-        setSelectedFroms(newFroms);
-        setSelectedTos(newTos);
-        setSelectedTransportTypes(newTransportTypes);
-        setSelectedOperators(newOperators);
-        setSelectedTimeline(newTimeline);
-        
-        const newLazyParams = {
-            first: parseInt(urlParams.get('first') || 0, 10),
-            rows: parseInt(urlParams.get('rows') || 50, 10),
-            page: parseInt(urlParams.get('page') || 0, 10),
-            sortField: urlParams.get('sort_by') || 'departure_time',
-            sortOrder: urlParams.get('sort_order') === 'DESC' ? -1 : 1,
-        };
-        setLazyParams(newLazyParams);
-        
-        // Initial data fetch based on URL params
-        fetchData(newLazyParams);
-    }, []); // Empty dependency array means it runs once on mount
+        fetchData(lazyParams);
+        // This effect depends on all filters and lazyParams to re-run
+        // It's the central point for triggering data fetches
+    }, [fetchData, lazyParams, selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline, customRange, conditions, triggerFetch]);
     
-    // 3. This effect updates the URL whenever filters change, but does NOT trigger a fetch
+    // This effect updates the URL whenever filters or conditions change
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         // Remove existing filter parameters before adding new ones
-        ['origin', 'destination', 'transport_type', 'operator_name', 'timeline'].forEach(param => params.delete(param));
+        ['origin', 'destination', 'transport_type', 'operator_name', 'timeline', 'query_conditions', 'first', 'rows', 'page', 'sort_by', 'sort_order'].forEach(param => params.delete(param));
         
         if (selectedFroms.length > 0) params.append('origin', selectedFroms.join(','));
         if (selectedTos.length > 0) params.append('destination', selectedTos.join(','));
@@ -209,44 +225,103 @@ const QueryBuilder = () => {
           params.append('timeline', selectedTimeline);
         }
         
+        if (conditions.some(c => c.field && c.operator && c.value)) {
+            params.append('query_conditions', JSON.stringify(conditions));
+        }
+
+        params.append('first', lazyParams.first);
+        params.append('rows', lazyParams.rows);
+        params.append('page', lazyParams.page);
+        params.append('sort_by', lazyParams.sortField);
+        params.append('sort_order', lazyParams.sortOrder === 1 ? 'ASC' : 'DESC');
+
         const newUrl = `${window.location.pathname}?${params.toString()}`;
         window.history.pushState({}, '', newUrl);
         
-    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline]);
+    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline, conditions, lazyParams]);
 
     const handleRunQuery = () => {
-        const newLazyParams = { ...lazyParams, first: 0, page: 0 };
-        setLazyParams(newLazyParams);
-        fetchData(newLazyParams);
+        // Reset to first page and trigger a new fetch
+        setLazyParams(prev => ({ ...prev, first: 0, page: 0 }));
+        setTriggerFetch(prev => prev + 1);
+    };
+
+    const addCondition = () => {
+        setConditions([...conditions, { field: '', operator: '=', value: '' }]);
+    };
+
+    const removeCondition = (index) => {
+        const newConditions = conditions.filter((_, i) => i !== index);
+        setConditions(newConditions);
+    };
+
+    const updateCondition = (index, field, value) => {
+        const newConditions = [...conditions];
+        newConditions[index] = { ...newConditions[index], [field]: value };
+        setConditions(newConditions);
     };
 
     const formatCellValue = (value, field) => {
         if (value === null || value === undefined) return '-';
-        if (field === 'price' && typeof value === 'number') {
-            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+        
+        // Format Departure and Arrival dates
+        if (field === 'departure_time' || field === 'arrival_time') {
+            try {
+                const date = new Date(value);
+                const day = String(date.getDate()).padStart(2, '0');
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const year = date.getFullYear();
+                return `${day}-${month}-${year}`;
+            } catch (e) {
+                console.error(`Error formatting date for field ${field}:`, e);
+                return 'Invalid Date';
+            }
         }
-        if (field === 'duration' && typeof value === 'number') {
+        
+        // Format price
+        if (field === 'price_inr' && typeof value === 'number') {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'INR' }).format(value);
+        }
+        
+        // Format duration
+        if (field === 'duration_min' && typeof value === 'number') { // FIX 2: Corrected field name
             const hours = Math.floor(value / 60);
             const minutes = value % 60;
             return `${hours}h ${minutes}m`;
         }
+        
+        // Format URL
+        if (field === 'route_url') {
+            return <a href={value} target="_blank" rel="noopener noreferrer">View Route</a>;
+        }
+        
         return String(value);
     };
 
-    const getColumns = (data) => {
-        if (!data || data.length === 0) return [];
-        const columns = Object.keys(data[0] || {});
-        return columns.map(field => {
-            return (
-                <Column 
-                    key={field} 
-                    field={field} 
-                    header={field.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                    body={(rowData) => formatCellValue(rowData[field], field)}
-                    sortable
-                />
-            );
-        });
+    const getColumns = () => {
+        const columnsToShow = [
+            { field: 'route_url', header: 'Route URL' },
+            { field: 'travel_date', header: 'Travel Date' },
+            { field: 'origin', header: 'Origin' },
+            { field: 'destination', header: 'Destination' },
+            { field: 'price_inr', header: 'Price' },
+            { field: 'departure_time', header: 'Departure Date' },
+            { field: 'arrival_time', header: 'Arrival Date' },
+            { field: 'transport_type', header: 'Transport Type' },
+            { field: 'duration_min', header: 'Duration' }, // FIX 3: Corrected field name
+            { field: 'operator_name', header: 'Operator Name' },
+            { field: 'provider', header: 'Provider' },
+        ];
+    
+        return columnsToShow.map(col => (
+            <Column
+                key={col.field}
+                field={col.field}
+                header={col.header}
+                body={(rowData) => formatCellValue(rowData[col.field], col.field)}
+                sortable
+            />
+        ));
     };
 
     return (
@@ -282,7 +357,6 @@ const QueryBuilder = () => {
                                 optionLabel="label"
                                 optionValue="value"
                                 filter
-                                onFilter={(e) => onFilter(e, 'from')}
                                 display="chip"
                                 placeholder="Search departure..."
                                 selectedItemsLabel="{0} origins selected"
@@ -301,7 +375,6 @@ const QueryBuilder = () => {
                                 optionLabel="label"
                                 optionValue="value"
                                 filter
-                                onFilter={(e) => onFilter(e, 'to')}
                                 display="chip"
                                 placeholder="Search destination..."
                                 selectedItemsLabel="{0} destinations selected"
@@ -324,7 +397,6 @@ const QueryBuilder = () => {
                                 selectedItemsLabel="{0} transport types selected"
                                 className="w-full text-sm"
                                 filter
-                                onFilter={(e) => onFilter(e, 'transport')}
                                 showSelectAll
                                 maxSelectedLabels={3}
                                 loading={loadingFilters}
@@ -343,24 +415,87 @@ const QueryBuilder = () => {
                                 selectedItemsLabel="{0} operators selected"
                                 className="w-full text-sm"
                                 filter
-                                onFilter={(e) => onFilter(e, 'operator')}
                                 showSelectAll
                                 maxSelectedLabels={3}
                                 loading={loadingFilters}
                                 emptyFilterMessage="No operators found"
                             />
                         </div>
-                        <div className="submit" style={{marginTop:'2px'}}>
-                            <Button label="Apply" icon="pi pi-check" onClick={handleRunQuery} loading={loading} style={{backgroundColor:'#007bff',color:'white',borderRadius:'5px',padding:'10px'}} />
-                        </div>
                     </div>
+                </div>
 
-                    <h2 className="text-2xl font-extrabold text-gray-900 flex items-center gap-2">
-                        Enter Your Query
-                    </h2>
-                    <p className="text-sm text-gray-500">
-                        Set conditions to filter and analyze your data efficiently.
-                    </p>
+                <div className="my-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-4">
+                        Custom Query Conditions
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {conditions.map((condition, index) => (
+                            <div key={index} className="p-inputgroup mb-3 flex-wrap">
+                                <Dropdown
+                                    value={condition.field}
+                                    onChange={(e) => updateCondition(index, 'field', e.value)}
+                                    options={fieldOptions}
+                                    placeholder="Field"
+                                    className="p-inputgroup-addon flex-grow-1"
+                                />
+                                <Dropdown
+                                    value={condition.operator}
+                                    onChange={(e) => updateCondition(index, 'operator', e.value)}
+                                    options={operatorOptions}
+                                    placeholder="Operator"
+                                    className="p-inputgroup-addon flex-grow-1"
+                                />
+                                {condition.field === 'departure_time' || condition.field === 'arrival_time' ? (
+                                    <Calendar
+                                        value={condition.value ? new Date(condition.value.split('-').reverse().join('-')) : null}
+                                        onChange={(e) => {
+                                            const date = e.value;
+                                            if (date) {
+                                                const day = String(date.getDate()).padStart(2, '0');
+                                                const month = String(date.getMonth() + 1).padStart(2, '0');
+                                                const year = date.getFullYear();
+                                                updateCondition(index, 'value', `${day}-${month}-${year}`);
+                                            } else {
+                                                updateCondition(index, 'value', '');
+                                            }
+                                        }}
+                                        dateFormat="dd-mm-yy"
+                                        placeholder="Select a date"
+                                        readOnlyInput
+                                    />
+                                ) : (
+                                    <InputText
+                                        value={condition.value}
+                                        onChange={(e) => updateCondition(index, 'value', e.target.value)}
+                                        placeholder="Value"
+                                        className="p-inputtext-sm flex-grow-2"
+                                    />
+                                )}
+                                {conditions.length > 1 && (
+                                    <Button
+                                        icon="pi pi-minus"
+                                        className="p-button-danger p-button-sm p-inputgroup-addon"
+                                        onClick={() => removeCondition(index)}
+                                    />
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="flex gap-2">
+                        <Button
+                            label="Add Condition"
+                            icon="pi pi-plus"
+                            className="p-button-outlined p-button-sm"
+                            onClick={addCondition}
+                        />
+                         <Button
+                            label="Apply"
+                            icon="pi pi-check"
+                            onClick={handleRunQuery}
+                            loading={loading}
+                            style={{backgroundColor:'#007bff',color:'white',borderRadius:'5px',padding:'10px'}}
+                        />
+                    </div>
                 </div>
             </Card>
             
@@ -391,16 +526,14 @@ const QueryBuilder = () => {
                             emptyMessage="No results to display."
                             onPage={(e) => {
                                 setLazyParams({ ...e, sortField: lazyParams.sortField, sortOrder: lazyParams.sortOrder });
-                                fetchData({ ...e, sortField: lazyParams.sortField, sortOrder: lazyParams.sortOrder });
                             }}
                             onSort={(e) => {
                                 setLazyParams({ ...e });
-                                fetchData({ ...e });
                             }}
                             scrollable 
                             scrollHeight="400px" 
                         >
-                            {getColumns(results)}
+                            {getColumns()}
                         </DataTable>
                     </div>
                 </Card>
