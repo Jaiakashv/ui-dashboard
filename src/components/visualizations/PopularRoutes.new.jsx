@@ -73,7 +73,7 @@ const PopularRoutes = () => {
 
   if (loading) {
     return (
-      <div className="p-6 bg-white rounded-lg shadow mt-8">
+      <div className="p-6 bg-white rounded-lg shadow">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">Popular Routes</h2>
         <p className="text-gray-600">Loading route data...</p>
       </div>
@@ -82,7 +82,7 @@ const PopularRoutes = () => {
 
   if (error) {
     return (
-      <div className="p-6 bg-white rounded-lg shadow mt-8">
+      <div className="p-6 bg-white rounded-lg shadow">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">Popular Routes</h2>
         <p className="text-red-600">{error}</p>
       </div>
@@ -91,7 +91,7 @@ const PopularRoutes = () => {
 
   if (!data.length) {
     return (
-      <div className="p-6 bg-white rounded-lg shadow mt-8">
+      <div className="p-6 bg-white rounded-lg shadow">
         <h2 className="text-xl font-semibold text-gray-800 mb-4">Popular Routes</h2>
         <p className="text-gray-600">No route data available.</p>
       </div>
@@ -99,7 +99,7 @@ const PopularRoutes = () => {
   }
 
   return (
-    <div className="bg-white p-4 md:p-6 rounded-lg shadow mt-8">
+    <div className="bg-white p-4 md:p-6 rounded-lg shadow">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <div>
           <h2 className="text-xl font-semibold text-gray-800">Popular Routes</h2>
