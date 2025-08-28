@@ -537,7 +537,7 @@ const CompareTable = ({
             return (
               <div 
                 key={index}
-                className={`grid grid-cols-3 px-6 py-4 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isClickable ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
+                className={`grid grid-cols-3 px-6 py-4 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isClickable ? 'cursor-pointer' : ''}`}
                 onClick={() => isClickable && handleMetricClick(metric.label)}
               >
                 <div className="text-sm font-medium text-gray-900">
@@ -555,7 +555,7 @@ const CompareTable = ({
                         e.stopPropagation();
                         handleViewRoutesClick('12go');
                       }}
-                      className="inline-flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                      className="inline-flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors underline decoration-green-600"
                     >
                       {formatValue(value12go, metric.isCurrency)}
                     </button>
@@ -572,7 +572,7 @@ const CompareTable = ({
                         e.stopPropagation();
                         handleViewRoutesClick('bookaway');
                       }}
-                      className="inline-flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                      className="inline-flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors underline decoration-green-600"
                     >
                       {formatValue(valueBookaway, metric.isCurrency)}
                     </button>
