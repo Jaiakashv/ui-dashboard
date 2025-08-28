@@ -727,19 +727,28 @@ const QueryBuilder = () => {
                                 {/* Conditional rendering for Calendar based on field */}
                                 {condition.field === 'departure_time' || condition.field === 'arrival_time' ? (
                                     <Calendar
-                                        value={condition.value ? new Date(`1970-01-01T${condition.value}`) : null}
+                                        value={(() => {
+                                            try {
+                                                if (!condition.value) return null;
+                                                const [hours, minutes, seconds] = condition.value.split(':');
+                                                return new Date(1970, 0, 1, hours, minutes, seconds || 0);
+                                            } catch (e) {
+                                                return null;
+                                            }
+                                        })()}
                                         onChange={(e) => {
                                             const date = e.value;
-                                            if (date) {
+                                            if (date && date instanceof Date && !isNaN(date.getTime())) {
+                                                // Format as HH:MM:SS for the backend
                                                 const hours = String(date.getHours()).padStart(2, '0');
                                                 const minutes = String(date.getMinutes()).padStart(2, '0');
-                                                const seconds = String(date.getSeconds()).padStart(2, '0');
-                                                updateCondition(index, 'value', `${hours}:${minutes}:${seconds}`);
+                                                updateCondition(index, 'value', `${hours}:${minutes}:00`);
                                             } else {
-                                                updateCondition(index, 'value', '');
+                                                updateCondition(index, 'value', null);
                                             }
                                         }}
                                         timeOnly
+                                        hourFormat="24"
                                         showTime
                                         placeholder="Select a time"
                                         readOnlyInput
