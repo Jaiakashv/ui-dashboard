@@ -109,7 +109,13 @@ const QueryBuilder = () => {
     const [selectedTos, setSelectedTos] = useState(getParamsAsArray('destination'));
     const [selectedTransportTypes, setSelectedTransportTypes] = useState(getParamsAsArray('transport_type'));
     const [selectedOperators, setSelectedOperators] = useState(getParamsAsArray('operator_name'));
-    const [filterOptions, setFilterOptions] = useState({ from: [], to: [], transportType: [], operator: [] });
+    // Initialize selectedProviders from URL params or default to both providers if none specified
+    const [selectedProviders, setSelectedProviders] = useState(() => {
+        const params = new URLSearchParams(window.location.search);
+        const providers = params.get('provider');
+        return providers ? providers.split(',').map(p => p.trim()) : ['12go', 'bookaway'];
+    });
+    const [filterOptions, setFilterOptions] = useState({ from: [], to: [], transportType: [], operator: [], provider: [] });
     const [loadingFilters, setLoadingFilters] = useState(false);
     const [customRange, setCustomRange] = useState(null); 
     
@@ -148,6 +154,10 @@ const QueryBuilder = () => {
     const [toSuggestions, setToSuggestions] = useState([]);
     const [transportTypeSuggestions, setTransportTypeSuggestions] = useState([]);
     const [operatorSuggestions, setOperatorSuggestions] = useState([]);
+    const providerOptions = [
+        { label: '12go', value: '12go' },
+        { label: 'Bookaway', value: 'bookaway' }
+    ];
     
     // This state is to control when a data fetch should happen
     const [triggerFetch, setTriggerFetch] = useState(0);
@@ -185,7 +195,8 @@ const QueryBuilder = () => {
                 from: origins,
                 to: destinations,
                 transportType: transportTypes,
-                operator: operators
+                operator: operators,
+                provider: providerOptions
             });
             
             setFromSuggestions(origins);
@@ -211,6 +222,11 @@ const QueryBuilder = () => {
         urlParams.append('limit', rows);
         urlParams.append('sort_by', params.sortField);
         urlParams.append('sort_order', params.sortOrder === 1 ? 'ASC' : 'DESC');
+
+        // Add provider filter if any provider is selected
+        if (selectedProviders.length > 0) {
+            urlParams.append('provider', selectedProviders.join(','));
+        }
 
         if (selectedFroms.length > 0) { urlParams.append('origin', selectedFroms.join(',')); }
         if (selectedTos.length > 0) { urlParams.append('destination', selectedTos.join(',')); }
@@ -293,11 +309,11 @@ const QueryBuilder = () => {
             }
 
             setResults(result.data || []);
-            const newTotalRecords = result.pagination.total;
+            const newTotalRecords = result.total || 0;
             setTotalRecords(newTotalRecords);
             
             // Add this line to log the total records received from the API
-            console.log('API returned Total Records:', newTotalRecords);
+            console.log('API returned Total Records:', newTotalRecords, 'Full response:', result);
 
             // FIX: If the current 'first' index is out of bounds for the new total, reset pagination
             if (params.first >= newTotalRecords && newTotalRecords > 0) {
@@ -322,18 +338,19 @@ const QueryBuilder = () => {
         fetchData(lazyParams);
         // This effect depends on all filters and lazyParams to re-run
         // It's the central point for triggering data fetches
-    }, [fetchData, lazyParams, selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline, customRange, conditions, triggerFetch]);
+    }, [fetchData, lazyParams, selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedProviders, selectedTimeline, customRange, conditions, triggerFetch]);
     
     // This effect updates the URL whenever filters or conditions change
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         // Remove existing filter parameters before adding new ones
-        ['origin', 'destination', 'transport_type', 'operator_name', 'timeline', 'query_conditions', 'first', 'rows', 'page', 'sort_by', 'sort_order', 'start_date', 'end_date'].forEach(param => params.delete(param));
+        ['origin', 'destination', 'transport_type', 'operator_name', 'provider', 'timeline', 'query_conditions', 'first', 'rows', 'page', 'sort_by', 'sort_order', 'start_date', 'end_date'].forEach(param => params.delete(param));
         
         if (selectedFroms.length > 0) params.append('origin', selectedFroms.join(','));
         if (selectedTos.length > 0) params.append('destination', selectedTos.join(','));
         if (selectedTransportTypes.length > 0) params.append('transport_type', selectedTransportTypes.join(','));
         if (selectedOperators.length > 0) params.append('operator_name', selectedOperators.join(','));
+        if (selectedProviders.length > 0) params.append('provider', selectedProviders.join(','));
         
         if (selectedTimeline && selectedTimeline !== 'Custom') {
           params.append('timeline', selectedTimeline);
@@ -367,7 +384,7 @@ const QueryBuilder = () => {
         const newUrl = `${window.location.pathname}?${params.toString()}`;
         window.history.pushState({}, '', newUrl);
         
-    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedTimeline, customRange, conditions, lazyParams]);
+    }, [selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedProviders, selectedTimeline, customRange, conditions, lazyParams]);
 
     const handleRunQuery = () => {
         // Reset to first page and trigger a new fetch
@@ -510,6 +527,35 @@ const QueryBuilder = () => {
                                 maxSelectedLabels={3}
                                 loading={loadingFilters}
                                 emptyFilterMessage="No origins found"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <div className="provider min-w-[150px]">
+                            <MultiSelect
+                                value={selectedProviders}
+                                onChange={(e) => {
+                                    setSelectedProviders(e.value);
+                                    // Update URL with the new provider selection
+                                    const url = new URL(window.location);
+                                    if (e.value && e.value.length > 0) {
+                                        url.searchParams.set('provider', e.value.join(','));
+                                    } else {
+                                        url.searchParams.delete('provider');
+                                    }
+                                    window.history.pushState({}, '', url);
+                                    // Trigger data fetch
+                                    setLazyParams(prev => ({ ...prev, page: 0 }));
+                                }}
+                                options={providerOptions}
+                                optionLabel="label"
+                                optionValue="value"
+                                display="chip"
+                                placeholder="Select providers..."
+                                selectedItemsLabel="{0} providers selected"
+                                className="w-full text-sm"
+                                showSelectAll
+                                maxSelectedLabels={2}
                             />
                         </div>
                         <div className="to min-w-[150px]">
