@@ -50,9 +50,15 @@ const ComparePage = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedFroms, setSelectedFroms] = useState([]);
-  const [selectedTos, setSelectedTos] = useState([]);
-  const [selectedTransportTypes, setSelectedTransportTypes] = useState([]);
+  // Initialize state from URL parameters
+  const [selectedFroms, setSelectedFroms] = useState(searchParams.get('from') ? [searchParams.get('from')] : []);
+  const [selectedTos, setSelectedTos] = useState(searchParams.get('to') ? [searchParams.get('to')] : []);
+  const [selectedTransportTypes, setSelectedTransportTypes] = useState(
+    searchParams.get('transport_type') ? [searchParams.get('transport_type')] : []
+  );
+  const [selectedTimeline, setSelectedTimeline] = useState(
+    searchParams.get('timeline') || 'Today'
+  );
   const [data, setData] = useState([]);
   const [loadingMetrics, setLoadingMetrics] = useState({});
 
@@ -378,7 +384,7 @@ const ComparePage = () => {
     return new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
   }, []);
 
-  const [selectedTimeline, setSelectedTimeline] = useState('Last 14 Days');
+  // Removed duplicate state declaration
   const [fromSuggestions, setFromSuggestions] = useState([]);
   const [toSuggestions, setToSuggestions] = useState([]);
   const [transportTypeSuggestions, setTransportTypeSuggestions] = useState([
@@ -882,27 +888,49 @@ const ComparePage = () => {
 
   const updateURL = useCallback(() => {
     const params = new URLSearchParams();
-
-    if (selectedFroms.length > 0) params.set('from', selectedFroms.join(','));
-    if (selectedTos.length > 0) params.set('to', selectedTos.join(','));
-    if (selectedTransportTypes.length > 0) params.set('transport', selectedTransportTypes.join(','));
-    if (selectedOperators.length > 0) params.set('operator', selectedOperators.join(','));
-
-    // Handle date parameters
-    if (selectedTimeline === 'Custom' && customRange) {
-      if (Array.isArray(customRange)) {
-        if (customRange[0] && !customRange[1]) {
-          // Single date selection
-          const selectedDate = formatDate(customRange[0]);
-          params.set('startDate', selectedDate);
-          params.set('endDate', selectedDate);
-        } else if (customRange[0] && customRange[1]) {
-          // Date range selection
-          params.set('startDate', formatDate(customRange[0]));
-          params.set('endDate', formatDate(new Date(customRange[1].getTime() + 24 * 60 * 60 * 1000 - 1)));
+    
+    // Add current filters to the URL
+    if (selectedTimeline) {
+      const today = new Date();
+      
+      // Handle different timeline options
+      switch(selectedTimeline.toLowerCase()) {
+        case 'today': {
+          const formattedDate = today.toLocaleDateString('en-GB').split('/').reverse().join('-');
+          params.set('travel_date', formattedDate);
+          break;
         }
+        case 'tomorrow': {
+          const tomorrow = new Date(today);
+          tomorrow.setDate(tomorrow.getDate() + 1);
+          const formattedDate = tomorrow.toLocaleDateString('en-GB').split('/').reverse().join('-');
+          params.set('travel_date', formattedDate);
+          break;
+        }
+        case 'next 7 days':
+        case 'next 14 days':
+        case 'this month':
+        case 'next month':
+        case 'this year':
+          params.set('timeline', selectedTimeline);
+          break;
+        case 'custom':
+          if (customRange?.length === 2) {
+            const startDate = formatDate(customRange[0]);
+            const endDate = formatDate(new Date(customRange[1].getTime() + 24 * 60 * 60 * 1000 - 1));
+            params.set('start_date', startDate);
+            params.set('end_date', endDate);
+          }
+          break;
+        default:
+          params.set('timeline', selectedTimeline);
       }
     }
+    
+    // Add other filter parameters
+    if (selectedFroms?.length) params.set('from', selectedFroms[0]);
+    if (selectedTos?.length) params.set('to', selectedTos[0]);
+    if (selectedTransportTypes?.length) params.set('transport_type', selectedTransportTypes[0]);
     if (selectedColumn) params.set('column', selectedColumn);
     if (selectedColumns.length > 0) {
       params.set('columns', selectedColumns.map(col => col.id).join(','));
@@ -1004,26 +1032,13 @@ const ComparePage = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search]);
-
-  // Update URL whenever relevant state changes
   useEffect(() => {
-    // Only update URL if we're not in the middle of initializing from URL params
-    if (location.search) {
-      const params = new URLSearchParams(location.search);
-      const currentParams = new URLSearchParams();
-      
-      // Rebuild the current URL state to compare
-      if (selectedTimeline) currentParams.set('timeline', selectedTimeline);
-      if (selectedFroms.length) currentParams.set('from', selectedFroms.join(','));
-      if (selectedTos.length) currentParams.set('to', selectedTos.join(','));
-      if (selectedTransportTypes.length) currentParams.set('transport', selectedTransportTypes.join(','));
-      if (selectedOperators.length) currentParams.set('operator', selectedOperators.join(','));
-      if (selectedDateField) currentParams.set('dateField', selectedDateField);
-      
-      // Only update if the URL would actually change to prevent loops
-      if (params.toString() !== currentParams.toString()) {
-        updateURL();
-      }
+    const params = new URLSearchParams(location.search);
+    let hasFilters = false;
+
+    if (params.has('timeline')) {
+      setSelectedTimeline(params.get('timeline'));
+      hasFilters = true;
     } else {
       updateURL();
     }
@@ -1334,7 +1349,10 @@ const ComparePage = () => {
               <div className="timeline min-w-[180px]">
                 <Dropdown
                   value={selectedTimeline}
-                  onChange={(e) => setSelectedTimeline(e.value)}
+                  onChange={(e) => {
+                    setSelectedTimeline(e.value);
+                    // The URL will be updated by the useEffect hook
+                  }}
                   options={[
                     'Today', 'Tomorrow', 'Next 7 Days', 'Next 14 Days', 'This Month', 'This Year', 'Custom'
                   ].map(v => ({ label: v, value: v }))}
@@ -1553,6 +1571,7 @@ const ComparePage = () => {
                     selectedFroms={selectedFroms}
                     selectedTos={selectedTos}
                     selectedTransportTypes={selectedTransportTypes}
+                    selectedTimeline={selectedTimeline}
                     onMetricClick={handleMetricClick}
                     selectedMetrics={selectedRows.map(rowId => rowIdToMetric[rowId])}
                     loadingMetrics={loadingMetrics}

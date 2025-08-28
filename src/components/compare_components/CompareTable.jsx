@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import RouteStatistics from './RouteStatistics';
 import { useStatsCache } from '../../contexts/StatsCacheContext';
 
@@ -11,8 +12,10 @@ const CompareTable = ({
   selectedTransportTypes = [], 
   selectedMetrics = [],
   onMetricClick,
-  loadingMetrics = {}
+  loadingMetrics = {},
+  selectedTimeline = 'Today'
 }) => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     '12go': {},
@@ -453,10 +456,40 @@ const CompareTable = ({
     };
     
     // Handle metric click
-    const handleMetricClick = (metricKey) => {
+    const handleMetricClick = (metricName) => {
       if (onMetricClick) {
-        onMetricClick(allMetrics[metricKey].label);
+        onMetricClick(metricName);
       }
+    };
+
+    const handleViewRoutesClick = (provider) => {
+      const params = new URLSearchParams();
+      
+      // Add current filters to the URL
+      if (selectedFroms?.length === 1) params.set('from', selectedFroms[0]);
+      if (selectedTos?.length === 1) params.set('to', selectedTos[0]);
+      if (selectedTransportTypes?.length === 1) params.set('transport_type', selectedTransportTypes[0]);
+      
+      // Set the provider, column and rows
+      params.set('provider', provider);
+      params.set('column', '1');
+      params.set('columns', '1');
+      params.set('rows', '1');
+      
+      // Use the selectedTimeline prop from the parent component
+      params.set('timeline', selectedTimeline);
+      
+      console.log('Navigating with params:', params.toString());
+      
+      // Add view and tab parameters to the search params
+      params.set('view', 'virtualize');
+      params.set('tab', 'custom-dashboard');
+      
+      // Navigate to the root with all parameters
+      navigate({
+        pathname: '/',
+        search: params.toString()
+      }, { replace: true });
     };
 
     // Filter the metrics based on what's selected and ensure all required properties exist
@@ -471,89 +504,88 @@ const CompareTable = ({
     
     return (
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Metric
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                12Go
-                {stats['12go']?.sample_data?.length > 0 && (
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                    {stats['12go'].sample_data.length} routes
-                  </span>
-                )}
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Bookaway
-                {stats.bookaway?.sample_data?.length > 0 && (
-                  <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                    {stats.bookaway.sample_data.length} routes
-                  </span>
-                )}
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {tableData.map((metric, index) => {
-              const isClickable = onMetricClick && !metric.isLoading;
-              const value12go = metric.getValue ? metric.getValue('12go') : (stats['12go']?.[metric.key] ?? 'N/A');
-              const valueBookaway = metric.getValue ? metric.getValue('bookaway') : (stats.bookaway?.[metric.key] ?? 'N/A');
-              
-              return (
-                <tr 
-                  key={index}
-                  className={`hover:bg-gray-50 ${isClickable ? 'cursor-pointer' : ''}`}
-                  onClick={() => isClickable && handleMetricClick(metric.label)}
-                >
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {metric.label}
-                    {metric.isLoading && (
-                      <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        Loading...
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatValue(value12go, metric.isCurrency)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatValue(valueBookaway, metric.isCurrency)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        
-        {/* Display sample data if available */}
-        {(stats['12go']?.sample_data?.length > 0 || stats.bookaway?.sample_data?.length > 0) && (
-          <div className="border-t border-gray-200 p-4">
-            <h3 className="text-sm font-medium text-gray-900 mb-2">Sample Routes</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {['12go', 'bookaway'].map((provider) => (
-                stats[provider]?.sample_data?.length > 0 && (
-                  <div key={provider} className="bg-gray-50 p-3 rounded-lg">
-                    <h4 className="text-xs font-medium text-gray-700 mb-2">{provider === '12go' ? '12Go' : 'Bookaway'} Routes</h4>
-                    <div className="space-y-2">
-                      {stats[provider].sample_data.slice(0, 3).map((route, idx) => (
-                        <div key={idx} className="text-xs text-gray-600">
-                          {route.origin} → {route.destination}: {route.count} routes
-                        </div>
-                      ))}
-                      {stats[provider].sample_data.length > 3 && (
-                        <div className="text-xs text-gray-500">
-                          +{stats[provider].sample_data.length - 3} more...
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              ))}
-            </div>
+        {/* Header */}
+        <div className="grid grid-cols-3 bg-gray-50 px-6 py-3 border-b border-gray-200">
+          <div className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Metric
           </div>
-        )}
+          <div className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            12Go
+            {stats['12go']?.sample_data?.length > 0 && (
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                {stats['12go'].sample_data.length} routes
+              </span>
+            )}
+          </div>
+          <div className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Bookaway
+            {stats.bookaway?.sample_data?.length > 0 && (
+              <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                {stats.bookaway.sample_data.length} routes
+              </span>
+            )}
+          </div>
+        </div>
+        
+        {/* Rows */}
+        <div className="divide-y divide-gray-200">
+          {tableData.map((metric, index) => {
+            const isClickable = onMetricClick && !metric.isLoading;
+            const value12go = metric.getValue ? metric.getValue('12go') : (stats['12go']?.[metric.key] ?? 'N/A');
+            const valueBookaway = metric.getValue ? metric.getValue('bookaway') : (stats.bookaway?.[metric.key] ?? 'N/A');
+            
+            return (
+              <div 
+                key={index}
+                className={`grid grid-cols-3 px-6 py-4 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} ${isClickable ? 'hover:bg-gray-50 cursor-pointer' : ''}`}
+                onClick={() => isClickable && handleMetricClick(metric.label)}
+              >
+                <div className="text-sm font-medium text-gray-900">
+                  {metric.label}
+                  {metric.isLoading && (
+                    <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      Loading...
+                    </span>
+                  )}
+                </div>
+                {metric.key === 'totalRoutes' ? (
+                  <div className="flex items-center">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewRoutesClick('12go');
+                      }}
+                      className="inline-flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+                    >
+                      {formatValue(value12go, metric.isCurrency)}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">
+                    {formatValue(value12go, metric.isCurrency)}
+                  </div>
+                )}
+                {metric.key === 'totalRoutes' ? (
+                  <div className="flex items-center">
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewRoutesClick('bookaway');
+                      }}
+                      className="inline-flex items-center justify-center px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+                    >
+                      {formatValue(valueBookaway, metric.isCurrency)}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">
+                    {formatValue(valueBookaway, metric.isCurrency)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     );
   };

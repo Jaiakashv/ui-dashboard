@@ -104,7 +104,7 @@ const getSingleParam = (paramName, defaultValue) => {
 
 const QueryBuilder = () => {
     // State management for query and filters, now initialized from URL
-    const [selectedTimeline, setSelectedTimeline] = useState(getSingleParam('timeline', 'Next 14 Days'));
+    const [selectedTimeline, setSelectedTimeline] = useState(getSingleParam('timeline', 'Today'));
     const [selectedFroms, setSelectedFroms] = useState(getParamsAsArray('origin'));
     const [selectedTos, setSelectedTos] = useState(getParamsAsArray('destination'));
     const [selectedTransportTypes, setSelectedTransportTypes] = useState(getParamsAsArray('transport_type'));
@@ -161,6 +161,24 @@ const QueryBuilder = () => {
     
     // This state is to control when a data fetch should happen
     const [triggerFetch, setTriggerFetch] = useState(0);
+
+    // Function to update URL parameters
+    const updateUrlParams = (updates) => {
+        const params = new URLSearchParams(window.location.search);
+        
+        // Apply updates to URL parameters
+        Object.entries(updates).forEach(([key, value]) => {
+            if (value !== undefined && value !== null && value !== '') {
+                params.set(key, value);
+            } else {
+                params.delete(key);
+            }
+        });
+        
+        // Update URL without causing a page reload
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        window.history.pushState({ path: newUrl }, '', newUrl);
+    };
 
     // Add custom pagination styles
     useEffect(() => {
@@ -409,7 +427,6 @@ const QueryBuilder = () => {
     
     // A mapping of field names to their display properties
     const columnMap = {
-        'route_url': { header: 'Route URL', body: (rowData) => <a href={rowData.route_url} target="_blank" rel="noopener noreferrer">View Route</a> },
         'travel_date': { 
             header: 'Travel Date',
             body: (rowData) => {
@@ -494,7 +511,35 @@ const QueryBuilder = () => {
                         <div className="timeline min-w-[260px]">
                             <Dropdown
                                 value={selectedTimeline}
-                                onChange={(e) => setSelectedTimeline(e.value)}
+                                onChange={(e) => {
+                                    const newTimeline = e.value;
+                                    console.log('Timeline changed to:', newTimeline);
+                                    
+                                    // Update state first
+                                    setSelectedTimeline(newTimeline);
+                                    
+                                    // Create a new URL object
+                                    const newUrl = new URL(window.location);
+                                    
+                                    // Always set the timeline parameter
+                                    newUrl.searchParams.set('timeline', newTimeline);
+                                    
+                                    // Clear date parameters if not in custom mode
+                                    if (newTimeline !== 'Custom') {
+                                        console.log('Clearing date params for non-custom timeline');
+                                        newUrl.searchParams.delete('start_date');
+                                        newUrl.searchParams.delete('end_date');
+                                        setCustomRange(null);
+                                    }
+                                    
+                                    // Update the URL without page reload
+                                    window.history.replaceState({}, '', newUrl);
+                                    console.log('Updated URL to:', newUrl.toString());
+                                    
+                                    // Reset pagination and trigger data fetch
+                                    setLazyParams(prev => ({ ...prev, first: 0 }));
+                                    setTriggerFetch(prev => prev + 1);
+                                }}
                                 options={timelineOptions.map(v => ({ label: v, value: v }))}
                                 placeholder="Timeframe"
                                 className="w-full"
@@ -502,7 +547,24 @@ const QueryBuilder = () => {
                             {selectedTimeline === 'Custom' && (
                                 <Calendar
                                     value={customRange}
-                                    onChange={(e) => setCustomRange(e.value)}
+                                    onChange={(e) => {
+                                        const range = e.value;
+                                        setCustomRange(range);
+                                        
+                                        if (range && range[0] && range[1]) {
+                                            const formatDate = (date) => new Date(date).toISOString().split('T')[0];
+                                            
+                                            // Update URL with the new date range
+                                            updateUrlParams({
+                                                start_date: formatDate(range[0]),
+                                                end_date: formatDate(range[1])
+                                            });
+                                            
+                                            // Reset to first page and trigger fetch
+                                            setLazyParams(prev => ({ ...prev, first: 0 }));
+                                            setTriggerFetch(prev => prev + 1);
+                                        }
+                                    }}
                                     selectionMode="range"
                                     readOnlyInput
                                     showIcon
@@ -514,7 +576,20 @@ const QueryBuilder = () => {
                         <div className="from min-w-[150px]">
                             <MultiSelect
                                 value={selectedFroms}
-                                onChange={(e) => setSelectedFroms(e.value)}
+                                onChange={(e) => {
+                                    setSelectedFroms(e.value);
+                                    // Update URL with the new origin selection
+                                    const url = new URL(window.location);
+                                    if (e.value && e.value.length > 0) {
+                                        url.searchParams.set('origin', e.value.join(','));
+                                    } else {
+                                        url.searchParams.delete('origin');
+                                    }
+                                    window.history.pushState({}, '', url);
+                                    // Trigger data fetch
+                                    setLazyParams(prev => ({ ...prev, first: 0 }));
+                                    setTriggerFetch(prev => prev + 1);
+                                }}
                                 options={fromSuggestions}
                                 optionLabel="label"
                                 optionValue="value"
@@ -561,7 +636,20 @@ const QueryBuilder = () => {
                         <div className="to min-w-[150px]">
                             <MultiSelect
                                 value={selectedTos}
-                                onChange={(e) => setSelectedTos(e.value)}
+                                onChange={(e) => {
+                                    setSelectedTos(e.value);
+                                    // Update URL with the new destination selection
+                                    const url = new URL(window.location);
+                                    if (e.value && e.value.length > 0) {
+                                        url.searchParams.set('destination', e.value.join(','));
+                                    } else {
+                                        url.searchParams.delete('destination');
+                                    }
+                                    window.history.pushState({}, '', url);
+                                    // Trigger data fetch
+                                    setLazyParams(prev => ({ ...prev, first: 0 }));
+                                    setTriggerFetch(prev => prev + 1);
+                                }}
                                 options={toSuggestions}
                                 optionLabel="label"
                                 optionValue="value"
@@ -775,7 +863,7 @@ const QueryBuilder = () => {
                                 setTriggerFetch(prev => prev + 1);
                             }}
                             scrollable 
-                            scrollHeight="400px"
+                            scrollHeight="600px"
                             sortMode="single"
                             paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink CurrentPageReport RowsPerPageDropdown"
                             currentPageReportTemplate="Showing {first} to {last} of {totalRecords} records"

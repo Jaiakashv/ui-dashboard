@@ -73,8 +73,7 @@ const RouteStatistics = ({ stats = {}, loading = false, error = null, selectedMe
       </div>
     );
   }
-
-  // If a specific metric is selected
+  
   if (selectedMetric) {
     // Map of metric names to their corresponding values in the stats object
     const metricMap = {
@@ -181,34 +180,36 @@ const RouteStatistics = ({ stats = {}, loading = false, error = null, selectedMe
         </div>
       </div>
       
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Metric
-              </th>
-              <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Value
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {tableData.map((item, index) => (
-              <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>                
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {item.label}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium">
-                  {item.label === 'Cheapest Carriers' 
-                    ? formatValue(item.value, false, true) 
-                    : formatValue(item.value, item.isCurrency)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* Grid Layout */}
+      <div className="overflow-hidden rounded-lg border border-gray-200">
+        {/* Header */}
+        <div className="grid grid-cols-2 bg-gray-50 px-6 py-3 border-b border-gray-200">
+          <div className="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Metric
+          </div>
+          <div className="text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Value
+          </div>
+        </div>
+        
+        {/* Rows */}
+        <div className="divide-y divide-gray-200">
+          {tableData.map((item, index) => (
+            <div 
+              key={index} 
+              className={`grid grid-cols-2 px-6 py-4 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+            >
+              <div className="text-sm font-medium text-gray-900">
+                {item.label}
+              </div>
+              <div className="text-sm text-right font-medium">
+                {item.label === 'Cheapest Carriers' 
+                  ? formatValue(item.value, false, true) 
+                  : formatValue(item.value, item.isCurrency)}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
