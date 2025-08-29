@@ -27,8 +27,8 @@ const CompareTable = ({
 
   const generateCacheKey = useCallback((provider) => {
     const params = new URLSearchParams();
-    if (selectedFroms?.length === 1) params.set('from', selectedFroms[0]);
-    if (selectedTos?.length === 1) params.set('to', selectedTos[0]);
+    if (selectedFroms?.length === 1) params.set('origin', selectedFroms[0]);
+    if (selectedTos?.length === 1) params.set('destination', selectedTos[0]);
     if (selectedTransportTypes?.length === 1) params.set('transportType', selectedTransportTypes[0]);
     return `stats_${provider}_${params.toString()}`;
   }, [selectedFroms, selectedTos, selectedTransportTypes]);
@@ -44,8 +44,8 @@ const CompareTable = ({
 
       // Build query parameters
       const params = new URLSearchParams();
-      if (selectedFroms?.length === 1) params.set('from', selectedFroms[0]);
-      if (selectedTos?.length === 1) params.set('to', selectedTos[0]);
+      if (selectedFroms?.length === 1) params.set('origin', selectedFroms[0]);
+      if (selectedTos?.length === 1) params.set('destination', selectedTos[0]);
       if (selectedTransportTypes?.length === 1) params.set('transportType', selectedTransportTypes[0]);
 
       // Fetch transport types
@@ -137,8 +137,8 @@ const CompareTable = ({
       
       // Build query parameters
       const params = new URLSearchParams();
-      if (selectedFroms?.length === 1) params.set('from', selectedFroms[0]);
-      if (selectedTos?.length === 1) params.set('to', selectedTos[0]);
+      if (selectedFroms?.length === 1) params.set('origin', selectedFroms[0]);
+      if (selectedTos?.length === 1) params.set('destination', selectedTos[0]);
       if (selectedTransportTypes?.length === 1) params.set('transportType', selectedTransportTypes[0]);
       
       console.log('Fetching stats with params:', params.toString());
@@ -465,9 +465,9 @@ const CompareTable = ({
     const handleViewRoutesClick = (provider) => {
       const params = new URLSearchParams();
       
-      // Add current filters to the URL
-      if (selectedFroms?.length === 1) params.set('from', selectedFroms[0]);
-      if (selectedTos?.length === 1) params.set('to', selectedTos[0]);
+      // Add current filters to the URL - using 'origin' and 'destination' instead of 'from' and 'to'
+      if (selectedFroms?.length === 1) params.set('origin', selectedFroms[0]);
+      if (selectedTos?.length === 1) params.set('destination', selectedTos[0]);
       if (selectedTransportTypes?.length === 1) params.set('transport_type', selectedTransportTypes[0]);
       
       // Set the provider, column and rows

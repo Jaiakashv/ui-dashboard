@@ -149,6 +149,75 @@ const QueryBuilder = () => {
             sortOrder: getSingleParam('sort_order', 'ASC') === 'DESC' ? -1 : 1,
         };
     });
+
+    // Effect to handle URL parameter changes
+    useEffect(() => {
+        const handlePopState = () => {
+            const params = new URLSearchParams(window.location.search);
+            
+            // Update timeline
+            const newTimeline = params.get('timeline') || 'Today';
+            if (newTimeline !== selectedTimeline) {
+                setSelectedTimeline(newTimeline);
+            }
+            
+            // Update from locations
+            const newFroms = getParamsAsArray('origin');
+            if (JSON.stringify(newFroms) !== JSON.stringify(selectedFroms)) {
+                setSelectedFroms(newFroms);
+            }
+            
+            // Update to locations
+            const newTos = getParamsAsArray('destination');
+            if (JSON.stringify(newTos) !== JSON.stringify(selectedTos)) {
+                setSelectedTos(newTos);
+            }
+            
+            // Update transport types
+            const newTransportTypes = getParamsAsArray('transport_type');
+            if (JSON.stringify(newTransportTypes) !== JSON.stringify(selectedTransportTypes)) {
+                setSelectedTransportTypes(newTransportTypes);
+            }
+            
+            // Update operators
+            const newOperators = getParamsAsArray('operator_name');
+            if (JSON.stringify(newOperators) !== JSON.stringify(selectedOperators)) {
+                setSelectedOperators(newOperators);
+            }
+            
+            // Update providers
+            const newProviders = params.get('provider') ? 
+                params.get('provider').split(',').map(p => p.trim()) : 
+                ['12go', 'bookaway'];
+            if (JSON.stringify(newProviders) !== JSON.stringify(selectedProviders)) {
+                setSelectedProviders(newProviders);
+            }
+            
+            // Update pagination
+            const first = parseInt(params.get('first') || '0', 10);
+            const rows = parseInt(params.get('rows') || '50', 10);
+            setLazyParams({
+                first,
+                rows,
+                page: Math.floor(first / rows),
+                sortField: params.get('sort_by') || 'departure_time',
+                sortOrder: params.get('sort_order') === 'DESC' ? -1 : 1,
+            });
+            
+            // Trigger a refetch if needed
+            setTriggerFetch(prev => prev + 1);
+        };
+        
+        // Add event listener for popstate (back/forward navigation)
+        window.addEventListener('popstate', handlePopState);
+        
+        // Initial check
+        handlePopState();
+        
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+        };
+    }, [selectedTimeline, selectedFroms, selectedTos, selectedTransportTypes, selectedOperators, selectedProviders]);
     
     const [fromSuggestions, setFromSuggestions] = useState([]);
     const [toSuggestions, setToSuggestions] = useState([]);
