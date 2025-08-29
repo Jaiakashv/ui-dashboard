@@ -67,9 +67,9 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   const location = useLocation();
   const virtualizeMenuItems = [
     { label: 'Popular Routes', icon: 'pi pi-chart-pie', id: 'popular-routes' },
-    { disabled: true, label: 'Price Graph', icon: 'pi pi-chart-bar', id: 'price-graph' },
-    { disabled: true, label: 'Booking Horizon', icon: 'pi pi-calendar', id: 'booking-horizon' },
-    { disabled: true, label: 'Cheapest Carriers', icon: 'pi pi-tag', id: 'cheapest-carrier' },
+    // { disabled: true, label: 'Price Graph', icon: 'pi pi-chart-bar', id: 'price-graph' },
+    // { disabled: true, label: 'Booking Horizon', icon: 'pi pi-calendar', id: 'booking-horizon' },
+    // { disabled: true, label: 'Cheapest Carriers', icon: 'pi pi-tag', id: 'cheapest-carrier' },
     { label: 'Customizable Dashboard', icon: 'pi pi-sliders-h', id: 'custom-dashboard' },
     { label: 'Compare', icon: 'pi pi-chart-line', id: 'compare', link: '/compare' },
   ];
@@ -123,7 +123,7 @@ const Sidebar = ({ onProviderSelect, onViewSelect, onVirtualizeViewSelect, activ
   return (
     <div className="w-full bg-[#1E2836] text-white shadow-lg fixed top-0 left-0 right-0 z-50">
       <div className="w-full px-4">
-        <div className="flex items-center justify-between h-16 max-w-screen-2xl mx-auto">
+        <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
             {/* Mobile menu button - only visible on mobile */}
             <button

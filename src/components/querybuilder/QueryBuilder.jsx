@@ -662,86 +662,77 @@ const QueryBuilder = () => {
         <div className="query-builder">
             <Card className="shadow-4 border-round-2xl p-6 bg-white/80 backdrop-blur-sm w-full">
                 <div className="mb-6">
-                    <div className="dropdownoption flex flex-row gap-2 flex-wrap mb-8">
-                        <div className="timeline min-w-[260px]">
-                            <Dropdown
-                                value={selectedTimeline}
-                                onChange={(e) => {
-                                    const newTimeline = e.value;
-                                    console.log('Timeline changed to:', newTimeline);
-                                    
-                                    // Update state first
-                                    setSelectedTimeline(newTimeline);
-                                    
-                                    // Create a new URL object
-                                    const newUrl = new URL(window.location);
-                                    
-                                    // Always set the timeline parameter
-                                    newUrl.searchParams.set('timeline', newTimeline);
-                                    
-                                    // Clear date parameters if not in custom mode
-                                    if (newTimeline !== 'Custom') {
-                                        console.log('Clearing date params for non-custom timeline');
-                                        newUrl.searchParams.delete('start_date');
-                                        newUrl.searchParams.delete('end_date');
-                                        setCustomRange(null);
-                                    }
-                                    
-                                    // Update the URL without page reload
-                                    window.history.replaceState({}, '', newUrl);
-                                    console.log('Updated URL to:', newUrl.toString());
-                                    
-                                    // Reset pagination and trigger data fetch
-                                    setLazyParams(prev => ({ ...prev, first: 0 }));
-                                    setTriggerFetch(prev => prev + 1);
-                                }}
-                                options={timelineOptions.map(v => ({ label: v, value: v }))}
-                                placeholder="Timeframe"
-                                className="w-full"
-                            />
-                            {selectedTimeline === 'Custom' && (
-                                <Calendar
-                                    value={customRange}
+                    <div className="dropdown-container flex flex-wrap gap-4 mb-8 w-full scale-100 md:scale-90 lg:scale-100">
+                        {/* Timeline Dropdown */}
+                        <div className="dropdown-item flex-1 min-w-[220px] max-w-[320px] transform transition-all duration-200 ease-in-out hover:scale-[1.02]">
+                            <div className="timeline w-full">
+                                <Dropdown
+                                    value={selectedTimeline}
+                                    inputClassName="text-sm md:text-base lg:text-sm xl:text-base"
                                     onChange={(e) => {
-                                        const range = e.value;
-                                        setCustomRange(range);
+                                        const newTimeline = e.value;
+                                        console.log('Timeline changed to:', newTimeline);
                                         
-                                        if (range && range[0] && range[1]) {
-                                            const formatDate = (date) => new Date(date).toISOString().split('T')[0];
-                                            
-                                            // Update URL with the new date range
-                                            updateUrlParams({
-                                                start_date: formatDate(range[0]),
-                                                end_date: formatDate(range[1])
-                                            });
-                                            
-                                            // Reset to first page and trigger fetch
-                                            setLazyParams(prev => ({ ...prev, first: 0 }));
-                                            setTriggerFetch(prev => prev + 1);
+                                        setSelectedTimeline(newTimeline);
+                                        const newUrl = new URL(window.location);
+                                        newUrl.searchParams.set('timeline', newTimeline);
+                                        
+                                        if (newTimeline !== 'Custom') {
+                                            newUrl.searchParams.delete('start_date');
+                                            newUrl.searchParams.delete('end_date');
+                                            setCustomRange(null);
                                         }
+                                        
+                                        window.history.replaceState({}, '', newUrl);
+                                        setLazyParams(prev => ({ ...prev, first: 0 }));
+                                        setTriggerFetch(prev => prev + 1);
                                     }}
-                                    selectionMode="range"
-                                    readOnlyInput
-                                    showIcon
-                                    placeholder="Select date range"
-                                    className="w-full mt-2"
+                                    options={timelineOptions.map(v => ({ label: v, value: v }))}
+                                    placeholder="Timeframe"
+                                    className="w-full"
                                 />
-                            )}
+                                {selectedTimeline === 'Custom' && (
+                                    <Calendar
+                                        value={customRange}
+                                        onChange={(e) => {
+                                            const range = e.value;
+                                            setCustomRange(range);
+                                            
+                                            if (range?.[0] && range?.[1]) {
+                                                const formatDate = (date) => new Date(date).toISOString().split('T')[0];
+                                                updateUrlParams({
+                                                    start_date: formatDate(range[0]),
+                                                    end_date: formatDate(range[1])
+                                                });
+                                                setLazyParams(prev => ({ ...prev, first: 0 }));
+                                                setTriggerFetch(prev => prev + 1);
+                                            }
+                                        }}
+                                        selectionMode="range"
+                                        readOnlyInput
+                                        showIcon
+                                        placeholder="Select date range"
+                                        className="w-full mt-2"
+                                    />
+                                )}
+                            </div>
                         </div>
-                        <div className="from min-w-[150px]">
+
+                        {/* From Dropdown */}
+                        <div className="dropdown-item flex-1 min-w-[200px] max-w-[280px] transform transition-all duration-200 ease-in-out hover:scale-[1.02]">
                             <MultiSelect
                                 value={selectedFroms}
+                                inputClassName="text-sm md:text-base lg:text-sm xl:text-base"
+                                panelClassName="text-sm md:text-base lg:text-sm xl:text-base"
                                 onChange={(e) => {
                                     setSelectedFroms(e.value);
-                                    // Update URL with the new origin selection
                                     const url = new URL(window.location);
-                                    if (e.value && e.value.length > 0) {
+                                    if (e.value?.length > 0) {
                                         url.searchParams.set('origin', e.value.join(','));
                                     } else {
                                         url.searchParams.delete('origin');
                                     }
                                     window.history.pushState({}, '', url);
-                                    // Trigger data fetch
                                     setLazyParams(prev => ({ ...prev, first: 0 }));
                                     setTriggerFetch(prev => prev + 1);
                                 }}
@@ -750,58 +741,31 @@ const QueryBuilder = () => {
                                 optionValue="value"
                                 filter
                                 display="chip"
-                                placeholder="Search departure..."
-                                selectedItemsLabel="{0} origins selected"
+                                placeholder="Departure..."
+                                selectedItemsLabel="{0} origins"
                                 className="w-full text-sm"
                                 showSelectAll
-                                maxSelectedLabels={3}
+                                maxSelectedLabels={2}
                                 loading={loadingFilters}
                                 emptyFilterMessage="No origins found"
                             />
                         </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <div className="provider min-w-[150px]">
-                            <MultiSelect
-                                value={selectedProviders}
-                                onChange={(e) => {
-                                    setSelectedProviders(e.value);
-                                    // Update URL with the new provider selection
-                                    const url = new URL(window.location);
-                                    if (e.value && e.value.length > 0) {
-                                        url.searchParams.set('provider', e.value.join(','));
-                                    } else {
-                                        url.searchParams.delete('provider');
-                                    }
-                                    window.history.pushState({}, '', url);
-                                    // Trigger data fetch
-                                    setLazyParams(prev => ({ ...prev, page: 0 }));
-                                }}
-                                options={providerOptions}
-                                optionLabel="label"
-                                optionValue="value"
-                                display="chip"
-                                placeholder="Select providers..."
-                                selectedItemsLabel="{0} providers selected"
-                                className="w-full text-sm"
-                                showSelectAll
-                                maxSelectedLabels={2}
-                            />
-                        </div>
-                        <div className="to min-w-[150px]">
+
+                        {/* To Dropdown */}
+                        <div className="dropdown-item flex-1 min-w-[200px] max-w-[280px] transform transition-all duration-200 ease-in-out hover:scale-[1.02]">
                             <MultiSelect
                                 value={selectedTos}
+                                inputClassName="text-sm md:text-base lg:text-sm xl:text-base"
+                                panelClassName="text-sm md:text-base lg:text-sm xl:text-base"
                                 onChange={(e) => {
                                     setSelectedTos(e.value);
-                                    // Update URL with the new destination selection
                                     const url = new URL(window.location);
-                                    if (e.value && e.value.length > 0) {
+                                    if (e.value?.length > 0) {
                                         url.searchParams.set('destination', e.value.join(','));
                                     } else {
                                         url.searchParams.delete('destination');
                                     }
                                     window.history.pushState({}, '', url);
-                                    // Trigger data fetch
                                     setLazyParams(prev => ({ ...prev, first: 0 }));
                                     setTriggerFetch(prev => prev + 1);
                                 }}
@@ -810,49 +774,86 @@ const QueryBuilder = () => {
                                 optionValue="value"
                                 filter
                                 display="chip"
-                                placeholder="Search destination..."
-                                selectedItemsLabel="{0} destinations selected"
+                                placeholder="Destination..."
+                                selectedItemsLabel="{0} destinations"
                                 className="w-full text-sm"
                                 showSelectAll
-                                maxSelectedLabels={3}
+                                maxSelectedLabels={2}
                                 loading={loadingFilters}
                                 emptyFilterMessage="No destinations found"
                             />
                         </div>
-                        <div className="transport-type min-w-[150px]">
+
+                        {/* Provider Dropdown */}
+                        <div className="dropdown-item flex-1 min-w-[180px] max-w-[240px] transform transition-all duration-200 ease-in-out hover:scale-[1.02]">
+                            <MultiSelect
+                                value={selectedProviders}
+                                inputClassName="text-sm md:text-base lg:text-sm xl:text-base"
+                                panelClassName="text-sm md:text-base lg:text-sm xl:text-base"
+                                onChange={(e) => {
+                                    setSelectedProviders(e.value);
+                                    const url = new URL(window.location);
+                                    if (e.value?.length > 0) {
+                                        url.searchParams.set('provider', e.value.join(','));
+                                    } else {
+                                        url.searchParams.delete('provider');
+                                    }
+                                    window.history.pushState({}, '', url);
+                                    setLazyParams(prev => ({ ...prev, page: 0 }));
+                                }}
+                                options={providerOptions}
+                                optionLabel="label"
+                                optionValue="value"
+                                display="chip"
+                                placeholder="Providers..."
+                                selectedItemsLabel="{0} providers"
+                                className="w-full text-sm"
+                                showSelectAll
+                                maxSelectedLabels={2}
+                            />
+                        </div>
+
+                        {/* Transport Type Dropdown */}
+                        <div className="dropdown-item flex-1 min-w-[160px] max-w-[220px] transform transition-all duration-200 ease-in-out hover:scale-[1.02]">
                             <MultiSelect
                                 value={selectedTransportTypes}
+                                inputClassName="text-sm md:text-base lg:text-sm xl:text-base"
+                                panelClassName="text-sm md:text-base lg:text-sm xl:text-base"
                                 onChange={(e) => setSelectedTransportTypes(e.value)}
                                 options={transportTypeSuggestions}
                                 optionLabel="label"
                                 optionValue="value"
                                 display="chip"
-                                placeholder="Search transport type..."
-                                selectedItemsLabel="{0} transport types selected"
+                                placeholder="Transport..."
+                                selectedItemsLabel="{0} types"
                                 className="w-full text-sm"
                                 filter
                                 showSelectAll
-                                maxSelectedLabels={3}
+                                maxSelectedLabels={2}
                                 loading={loadingFilters}
-                                emptyFilterMessage="No transport types found"
+                                emptyFilterMessage="No transport types"
                             />
                         </div>
-                        <div className="operator min-w-[150px]">
+
+                        {/* Operator Dropdown */}
+                        <div className="dropdown-item flex-1 min-w-[160px] max-w-[220px] transform transition-all duration-200 ease-in-out hover:scale-[1.02]">
                             <MultiSelect
                                 value={selectedOperators}
+                                inputClassName="text-sm md:text-base lg:text-sm xl:text-base"
+                                panelClassName="text-sm md:text-base lg:text-sm xl:text-base"
                                 onChange={(e) => setSelectedOperators(e.value)}
                                 options={operatorSuggestions}
                                 optionLabel="label"
                                 optionValue="value"
                                 display="chip"
-                                placeholder="Search operator..."
-                                selectedItemsLabel="{0} operators selected"
+                                placeholder="Operators..."
+                                selectedItemsLabel="{0} operators"
                                 className="w-full text-sm"
                                 filter
                                 showSelectAll
-                                maxSelectedLabels={3}
+                                maxSelectedLabels={2}
                                 loading={loadingFilters}
-                                emptyFilterMessage="No operators found"
+                                emptyFilterMessage="No operators"
                             />
                         </div>
                     </div>
@@ -862,76 +863,93 @@ const QueryBuilder = () => {
                     <h3 className="text-xl font-semibold text-gray-900 mb-4">
                         Custom Query Conditions
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                         {conditions.map((condition, index) => (
-                            <div key={index} className="p-inputgroup mb-3 flex-wrap">
+                            <div key={index} className="p-inputgroup flex items-stretch h-9">
                                 <Dropdown
                                     value={condition.field}
                                     onChange={(e) => updateCondition(index, 'field', e.value)}
                                     options={fieldOptions}
                                     placeholder="Field"
-                                    className="p-inputgroup-addon flex-grow-1"
+                                    className="p-inputgroup-addon flex-grow-1 text-sm h-9"
+                                    inputClassName="h-9 py-1 text-sm"
+                                    panelClassName="text-sm"
+                                   
                                 />
                                 <Dropdown
                                     value={condition.operator}
                                     onChange={(e) => updateCondition(index, 'operator', e.value)}
                                     options={operatorOptions}
                                     placeholder="Operator"
-                                    className="p-inputgroup-addon flex-grow-1"
+                                    className="p-inputgroup-addon flex-grow-1 text-sm h-9"
+                                    inputClassName="h-9 py-1 text-sm"
+                                    panelClassName="text-sm"
+                                    style={{marginLeft:'10px'}}
                                 />
                                 {/* Conditional rendering for Calendar based on field */}
                                 {condition.field === 'departure_time' || condition.field === 'arrival_time' ? (
-                                    <Calendar
-                                        value={(() => {
-                                            try {
-                                                if (!condition.value) return null;
-                                                const [hours, minutes, seconds] = condition.value.split(':');
-                                                return new Date(1970, 0, 1, hours, minutes, seconds || 0);
-                                            } catch (e) {
-                                                return null;
-                                            }
-                                        })()}
-                                        onChange={(e) => {
-                                            const date = e.value;
-                                            if (date && date instanceof Date && !isNaN(date.getTime())) {
-                                                // Format as HH:MM:SS for the backend
-                                                const hours = String(date.getHours()).padStart(2, '0');
-                                                const minutes = String(date.getMinutes()).padStart(2, '0');
-                                                updateCondition(index, 'value', `${hours}:${minutes}:00`);
-                                            } else {
-                                                updateCondition(index, 'value', null);
-                                            }
-                                        }}
-                                        timeOnly
-                                        hourFormat="24"
-                                        showTime
-                                        placeholder="Select a time"
-                                        readOnlyInput
-                                    />
+                                    <div className="flex-grow-1 h-9">
+                                        <Calendar
+                                            value={(() => {
+                                                try {
+                                                    if (!condition.value) return null;
+                                                    const [hours, minutes, seconds] = condition.value.split(':');
+                                                    return new Date(1970, 0, 1, hours, minutes, seconds || 0);
+                                                } catch (e) {
+                                                    return null;
+                                                }
+                                            })()}
+                                            onChange={(e) => {
+                                                const date = e.value;
+                                                if (date && date instanceof Date && !isNaN(date.getTime())) {
+                                                    // Format as HH:MM:SS for the backend
+                                                    const hours = String(date.getHours()).padStart(2, '0');
+                                                    const minutes = String(date.getMinutes()).padStart(2, '0');
+                                                    updateCondition(index, 'value', `${hours}:${minutes}:00`);
+                                                } else {
+                                                    updateCondition(index, 'value', null);
+                                                }
+                                            }}
+                                            timeOnly
+                                            hourFormat="24"
+                                            showTime
+                                            placeholder="Select time"
+                                            readOnlyInput
+                                            className="h-9"
+                                            inputClassName="h-9 py-1 text-sm"
+                                            panelClassName="text-sm"
+                                        />
+                                    </div>
                                 ) : condition.field === 'travel_date' ? (
-                                    <Calendar
-                                        value={condition.value ? new Date(condition.value) : null}
-                                        onChange={(e) => {
-                                            const date = e.value;
-                                            if (date) {
-                                                const day = String(date.getDate()).padStart(2, '0');
-                                                const month = String(date.getMonth() + 1).padStart(2, '0');
-                                                const year = date.getFullYear();
-                                                updateCondition(index, 'value', `${year}-${month}-${day}`);
-                                            } else {
-                                                updateCondition(index, 'value', '');
-                                            }
-                                        }}
-                                        dateFormat="dd-mm-yy"
-                                        placeholder="Select a date"
-                                        readOnlyInput
-                                    />
+                                    <div className="flex-grow-1 h-9">
+                                        <Calendar
+                                            value={condition.value ? new Date(condition.value) : null}
+                                            onChange={(e) => {
+                                                const date = e.value;
+                                                if (date) {
+                                                    const day = String(date.getDate()).padStart(2, '0');
+                                                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                                                    const year = date.getFullYear();
+                                                    updateCondition(index, 'value', `${year}-${month}-${day}`);
+                                                } else {
+                                                    updateCondition(index, 'value', '');
+                                                }
+                                            }}
+                                            dateFormat="dd-mm-yy"
+                                            placeholder="Select date"
+                                            readOnlyInput
+                                            className="h-9"
+                                            inputClassName="h-9 py-1 text-sm"
+                                            panelClassName="text-sm"
+                                        />
+                                    </div>
                                 ) : (
                                     <InputText
                                         value={condition.value}
                                         onChange={(e) => updateCondition(index, 'value', e.target.value)}
                                         placeholder="Value"
-                                        className="p-inputtext-sm flex-grow-2"
+                                        className="p-inputtext-sm flex-grow-2 h-9 text-sm"
+                                        style={{marginLeft:'10px'}}
                                     />
                                 )}
                                 {conditions.length > 1 && (
@@ -944,11 +962,11 @@ const QueryBuilder = () => {
                             </div>
                         ))}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 mt-5">
                         <Button
                             label="Add Condition"
                             icon="pi pi-plus"
-                            className="p-button-outlined p-button-sm"
+                            className="p-button-outlined p-button-sm mt-3"
                             onClick={addCondition}
                         />
                          <Button
@@ -956,7 +974,7 @@ const QueryBuilder = () => {
                             icon="pi pi-check"
                             onClick={handleRunQuery}
                             loading={loading}
-                            style={{backgroundColor:'#007bff',color:'white',borderRadius:'5px',padding:'10px'}}
+                            style={{backgroundColor:'#007bff',color:'white',borderRadius:'5px',padding:'5px',marginTop:'10px'}}
                         />
                     </div>
                 </div>

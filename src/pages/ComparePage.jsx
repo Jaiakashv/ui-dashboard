@@ -30,11 +30,11 @@ const sectionItems = {
   ],
   rows: [
     { id: 1, name: 'Unique Routes' },
+    { id: 2, name: 'Number of Journeys' },
     { id: 4, name: 'Lowest Price' },
     { id: 5, name: 'Highest Price' },
     { id: 8, name: 'No of Unique Providers' },
-    { id: 9, name: 'Cheapest Carriers' },
-    { id: 11, name: 'Available Transport Types' }
+    { id: 9, name: 'Cheapest Carriers' }
   ]
 };
 
@@ -57,7 +57,7 @@ const ComparePage = () => {
     searchParams.get('transport_type') ? [searchParams.get('transport_type')] : []
   );
   const [selectedTimeline, setSelectedTimeline] = useState(
-    searchParams.get('timeline') || 'Today'
+    searchParams.get('timeline') || 'Next 14 Days'
   );
   const [data, setData] = useState([]);
   const [loadingMetrics, setLoadingMetrics] = useState({});
@@ -93,7 +93,7 @@ const ComparePage = () => {
           table_exists: data.bookaway?.table_exists || false,
           sample_data: data.bookaway?.sample_data || []
         },
-        timestamp: data.timestamp || new Date().toISOString()
+        timestamp: data.timestamp || null
       };
       
       console.log('Processed provider stats:', result);
@@ -143,162 +143,194 @@ const ComparePage = () => {
     }
   };
 
+  // Fetch journeys data with filters
+  const fetchJourneysData = useCallback(async (filters = {}) => {
+    try {
+      console.log('Fetching journeys data with filters:', filters);
+      
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (filters.origin) params.append('origin', filters.origin);
+      if (filters.destination) params.append('destination', filters.destination);
+      if (filters.transportType) params.append('transport_type', filters.transportType);
+      if (filters.operatorName) params.append('operator_name', filters.operatorName);
+      if (filters.travelDate) params.append('travel_date', filters.travelDate);
+      
+      const response = await axios.get(`${API_BASE_URL}/api/metrics/journeys?${params.toString()}`, {
+        timeout: 10000,
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
+      
+      console.log('Journeys data received:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching journeys data:', error);
+      return {
+        '12go': { count: 0, timestamp: new Date().toISOString() },
+        'bookaway': { count: 0, timestamp: new Date().toISOString() }
+      };
+    }
+  }, []);
+
   // Fetch route statistics
   const fetchRouteStats = useCallback(async (metric = null) => {
     try {
       console.log('Starting to fetch route stats...');
       setLoading(true);
       
-      // Fetch stats from the new endpoints
-      console.log('Fetching provider stats...');
-      const providerStats = await fetchProviderStats();
+      // Get the current provider from URL or default to '12go'
+      const currentProvider = provider || '12go';
       
-      if (providerStats) {
-        // Get the current provider from URL or default to '12go'
-        const currentProvider = provider || '12go';
-        const currentProviderData = providerStats[currentProvider] || {};
-        
-        const combinedStats = {
-          ...providerStats,
-          totalRoutes: currentProviderData.unique_routes || 0,
-          meanPrice: '0.00',
-          lowestPrice: '0.00',
-          highestPrice: '0.00',
-          medianPrice: '0.00',
-          standardDeviation: '0.00',
-          uniqueProviders: currentProviderData.sample_data?.length || 0,
-          cheapestCarriers: [],
-          routes: selectedTransportTypes.join(', ') || 'All',
-          sample_data: currentProviderData.sample_data || []
-        };
-        
-        console.log('Combined stats to be set:', combinedStats);
-        setStats(combinedStats);
-        setError(null);
-        return combinedStats;
-      }
-      
-      // Fallback to the old implementation if new endpoint fails
-      const params = new URLSearchParams();
-      if (selectedFroms.length > 0) params.append('from', selectedFroms[0]);
-      if (selectedTos.length > 0) params.append('to', selectedTos[0]);
-      if (selectedTransportTypes.length > 0) params.append('transportType', selectedTransportTypes[0]);
-      
-      const queryString = params.toString();
-      
-      if (metric) {
-        const metricEndpoint = metric.toLowerCase().replace(/\s+/g, '');
-        const result = await fetchStat(`${metricEndpoint}?${queryString}`);
-        
-        const metricMap = {
-          'unique routes': { totalRoutes: result?.count || 0 },
-          'mean price average': { meanPrice: result?.mean || '0.00' },
-          'lowest price': { lowestPrice: result?.min || '0.00' },
-          'highest price': { highestPrice: result?.max || '0.00' },
-          'median price': { medianPrice: result?.median || '0.00' },
-          'standard deviation': { standardDeviation: result?.stddev || '0.00' },
-          'no of unique providers': { uniqueProviders: result?.count || 0 },
-          'cheapest carriers': { cheapestCarriers: result?.carriers || [] },
-          'routes': { routes: selectedTransportTypes.join(', ') || 'All' }
-        };
-        
-        const updatedStats = { ...stats, ...metricMap[metric.toLowerCase()] };
-        setStats(updatedStats);
-        setError(null);
-        return updatedStats;
-      }
-      
-      const [
-        total, 
-        mean, 
-        min, 
-        max, 
-        median, 
-        stddev, 
-        unique, 
-        cheapest
-      ] = await Promise.all([
-        fetchStat(`total?${queryString}`),
-        fetchStat(`meanprice?${queryString}`),
-        fetchStat(`lowestprice?${queryString}`),
-        fetchStat(`highestprice?${queryString}`),
-        fetchStat(`medianprice?${queryString}`),
-        fetchStat(`standarddeviation?${queryString}`),
-        fetchStat(`uniqueproviders?${queryString}`),
-        fetchStat(`cheapestcarriers?${queryString}`)
-      ]);
-
-      const combinedStats = {
-        totalRoutes: total?.count || 0,
-        meanPrice: mean?.mean || '0.00',
-        lowestPrice: min?.min || '0.00',
-        highestPrice: max?.max || '0.00',
-        medianPrice: median?.median || '0.00',
-        standardDeviation: stddev?.stddev || '0.00',
-        uniqueProviders: unique?.count || 0,
-        cheapestCarriers: cheapest?.carriers || [],
-        routes: selectedTransportTypes.join(', ') || 'All'
+      // Initialize stats object with default values
+      const stats = {
+        totalRoutes: 0,
+        numberOfJourneys: 0,
+        meanPrice: '0.00',
+        lowestPrice: '0.00',
+        highestPrice: '0.00',
+        medianPrice: '0.00',
+        standardDeviation: '0.00',
+        uniqueProviders: 0,
+        cheapestCarriers: [],
+        routes: selectedTransportTypes.join(', ') || 'All',
+        sample_data: []
       };
-    } catch (err) {
-      console.error('Error fetching route statistics:', err);
-      setError('Failed to load route statistics. Please try again later.');
-      throw err; // Re-throw to allow error handling in the caller
+
+      // Always fetch provider stats first as they're needed for most metrics
+      const providerStats = await fetchProviderStats();
+      if (!providerStats) {
+        throw new Error('Failed to fetch provider stats');
+      }
+
+      const currentProviderData = providerStats[currentProvider] || {};
+      
+      // Update stats with provider data
+      stats.totalRoutes = currentProviderData.unique_routes || 0;
+      stats.uniqueProviders = currentProviderData.sample_data?.length || 0;
+      stats.sample_data = currentProviderData.sample_data || [];
+
+      // If a specific metric is requested, only fetch that metric's data
+      if (metric) {
+        const metricKey = metric.toLowerCase();
+        if (metricKey === 'numberofjourneys') {
+          const journeysData = await fetchJourneysData({
+            origin: selectedFroms[0],
+            destination: selectedTos[0],
+            transportType: selectedTransportTypes[0],
+            // Add other filters as needed
+          });
+          stats.numberOfJourneys = journeysData?.[currentProvider]?.count || 0;
+        } else {
+          // Fallback to the old implementation for other metrics
+          const params = new URLSearchParams();
+          if (selectedTos.length > 0) params.append('to', selectedTos[0]);
+          if (selectedTransportTypes.length > 0) params.append('transportType', selectedTransportTypes[0]);
+          
+          const metricEndpoint = metricKey.replace(/\s+/g, '');
+          const result = await fetchStat(`${metricEndpoint}?${params.toString()}`);
+          
+          const metricMap = {
+            'uniqueroutes': { totalRoutes: result?.count || 0 },
+            'meanpriceaverage': { meanPrice: result?.mean || '0.00' },
+            'lowestprice': { lowestPrice: result?.min || '0.00' },
+            'highestprice': { highestPrice: result?.max || '0.00' },
+            'medianprice': { medianPrice: result?.median || '0.00' },
+            'standarddeviation': { standardDeviation: result?.stddev || '0.00' },
+            'noofuniqueproviders': { uniqueProviders: result?.count || 0 },
+            'cheapestcarriers': { cheapestCarriers: result?.carriers || [] },
+            'routes': { routes: selectedTransportTypes.join(', ') || 'All' }
+          };
+          
+          // Apply the metric-specific updates to stats
+          const updates = metricMap[metricKey] || {};
+          Object.assign(stats, updates);
+        }
+      } else {
+        // If no specific metric is requested, fetch all metrics
+        const journeysData = await fetchJourneysData({
+          origin: selectedFroms[0],
+          destination: selectedTos[0],
+          transportType: selectedTransportTypes[0],
+          // Add other filters as needed
+        });
+        stats.numberOfJourneys = journeysData?.[currentProvider]?.count || 0;
+      }
+
+      console.log('Stats to be set:', stats);
+      setStats(stats);
+      setError(null);
+      return stats;
+    } catch (error) {
+      console.error('Error in fetchRouteStats:', error);
+      setError('Failed to fetch route statistics. Please try again later.');
+      throw error;
     } finally {
       setLoading(false);
     }
-  }, [selectedFroms, selectedTos, selectedTransportTypes]);
+  }, [provider, selectedTransportTypes]);
 
-  // Get transformed data from stats
   const getTransformedData = useCallback((stats) => {
-    if (!stats) {
-      console.log('No stats provided to transform');
-      return [];
-    }
-    
-    // Get the current provider from URL or default to '12go'
-    const currentProvider = provider || '12go';
-    const providerData = stats[currentProvider] || {};
-    
-    console.log('Transforming data for provider:', currentProvider, 'Provider data:', providerData);
-    console.log('All stats:', stats);
-    
-    return [{
-      id: 1,
-      name: 'Unique Routes',
-      value: providerData.unique_routes || 0
-    }, {
-      id: 2,
-      name: 'Mean Price Average',
-      value: stats.meanPrice || '0.00'
-    }, {
-      id: 3,
-      name: 'Lowest Price',
-      value: stats.lowestPrice || '0.00'
-    }, {
-      id: 4,
-      name: 'Highest Price',
-      value: stats.highestPrice || '0.00'
-    }, {
-      id: 5,
-      name: 'Median Price',
-      value: stats.medianPrice || '0.00'
-    }, {
-      id: 6,
-      name: 'Standard Deviation',
-      value: stats.standardDeviation || '0.00'
-    }, {
-      id: 7,
-      name: 'No of Unique Providers',
-      value: stats.uniqueProviders || 0
-    }, {
-      id: 8,
-      name: 'Cheapest Carriers',
-      value: stats.cheapestCarriers ? stats.cheapestCarriers.join(', ') : 'N/A'
-    }, {
-      id: 9,
-      name: 'Routes',
-      value: stats.routes || 'All'
-    }];
+    if (!stats) return [];
+
+    return [
+      {
+        id: 1,
+        name: 'Unique Routes',
+        value: stats.totalRoutes || 0,
+        key: 'totalRoutes'
+      },
+      {
+        id: 2,
+        name: 'Number of Journeys',
+        value: stats.numberOfJourneys || 0,
+        key: 'numberOfJourneys'
+      },
+      {
+        id: 3,
+        name: 'Lowest Price',
+        value: stats.lowestPrice || '0.00',
+        key: 'lowestPrice'
+      },
+      {
+        id: 4,
+        name: 'Highest Price',
+        value: stats.highestPrice || '0.00',
+        key: 'highestPrice'
+      },
+      {
+        id: 5,
+        name: 'Median Price',
+        value: stats.medianPrice || '0.00',
+        key: 'medianPrice'
+      },
+      {
+        id: 6,
+        name: 'Standard Deviation',
+        value: stats.standardDeviation || '0.00',
+        key: 'standardDeviation'
+      },
+      {
+        id: 7,
+        name: 'No of Unique Providers',
+        value: stats.uniqueProviders || 0,
+        key: 'uniqueProviders'
+      },
+      {
+        id: 8,
+        name: 'Cheapest Carriers',
+        value: stats.cheapestCarriers ? stats.cheapestCarriers.join(', ') : 'N/A',
+        key: 'cheapestCarriers'
+      },
+      {
+        id: 9,
+        name: 'Routes',
+        value: stats.routes || 'All',
+        key: 'routes'
+      }
+    ];
   }, [provider]);
 
   // Update data when stats or provider changes
@@ -325,12 +357,23 @@ const ComparePage = () => {
 
   // Handle metric click - fetch only the clicked metric
   const handleMetricClick = useCallback((metricName) => {
+    // Map metric name to its key
+    const metricKey = Object.entries(rowIdToMetric).find(
+      ([_, value]) => value === metricName.toLowerCase().replace(/\s+/g, '')
+    )?.[1];
+    
+    if (!metricKey) return;
+    
     // Don't fetch data for these static metrics
-    if (['Routes'].includes(metricName)) return;
+    if (['routes'].includes(metricKey)) return;
     
     // Check if we already have this metric's data
-    const metricData = data.find(item => item.name.toLowerCase() === metricName.toLowerCase());
-    if (!metricData || metricData.value === '0.00' || metricData.value === 0 || metricData.value === 'Click to load') {
+    const metricData = data.find(item => item.key === metricKey);
+    if (!metricData || metricData.value === '0.00' || metricData.value === 0 || 
+        metricData.value === 'Click to load' || metricData.value === 'Loading...') {
+      
+      console.log(`Fetching data for ${metricName} (${metricKey})`);
+      
       // Set loading state for this metric
       setLoadingMetrics(prev => ({
         ...prev,
@@ -338,7 +381,7 @@ const ComparePage = () => {
       }));
       
       // Fetch the metric data
-      fetchRouteStats(metricName).finally(() => {
+      fetchRouteStats(metricKey).finally(() => {
         setLoadingMetrics(prev => ({
           ...prev,
           [metricName]: false
@@ -895,11 +938,10 @@ const ComparePage = () => {
       
       // Handle different timeline options
       switch(selectedTimeline.toLowerCase()) {
-        case 'today': {
-          const formattedDate = today.toLocaleDateString('en-GB').split('/').reverse().join('-');
-          params.set('travel_date', formattedDate);
+        case 'today':
+          // Don't set travel_date, just use the timeline parameter
+          params.set('timeline', 'Today');
           break;
-        }
         case 'tomorrow': {
           const tomorrow = new Date(today);
           tomorrow.setDate(tomorrow.getDate() + 1);
@@ -909,10 +951,13 @@ const ComparePage = () => {
         }
         case 'next 7 days':
         case 'next 14 days':
+        case 'last 14 days':
         case 'this month':
         case 'next month':
         case 'this year':
           params.set('timeline', selectedTimeline);
+          // Remove any existing travel_date parameter
+          params.delete('travel_date');
           break;
         case 'custom':
           if (customRange?.length === 2) {
@@ -1219,7 +1264,7 @@ const ComparePage = () => {
   // Clear all filters function
   const clearAllFilters = useCallback(() => {
     // Reset all filter states to default
-    setSelectedTimeline('Last 14 Days');
+    setSelectedTimeline('Next 14 Days');
     setSelectedFroms([]);
     setSelectedTos([]);
     setSelectedTransportTypes([]);
@@ -1258,7 +1303,7 @@ const ComparePage = () => {
   // Map of row IDs to metric keys
   const rowIdToMetric = {
     1: 'totalRoutes',
-    2: 'meanPrice',
+    2: 'numberOfJourneys',
     4: 'lowestPrice',
     5: 'highestPrice',
     6: 'medianPrice',
@@ -1364,9 +1409,11 @@ const ComparePage = () => {
                     value={customRange}
                     onChange={(e) => setCustomRange(e.value)}
                     selectionMode="range"
-                    readOnlyInput
+                    placeholder="Select a date range"
+                    showButtonBar
                     showIcon
-                    placeholder="Select date range"
+                    iconPos="left"
+                    readOnlyInput
                     className="w-full mt-1 text-sm"
                   />
                 )}

@@ -402,6 +402,12 @@ const CompareTable = ({
         isLoading: loadingMetrics['totalRoutes'],
         getValue: (provider) => stats[provider]?.totalRoutes || 0 
       },
+      'numberOfJourneys': {
+        label: 'Number of Journeys',
+        isCurrency: false,
+        isLoading: loadingMetrics['numberOfJourneys'],
+        getValue: (provider) => stats[provider]?.numberOfJourneys || 0
+      },
       'meanPrice': { 
         label: 'Mean Price', 
         isCurrency: true,
@@ -478,7 +484,7 @@ const CompareTable = ({
         params.set('provider', provider);
         params.set('column', '1');
         params.set('columns', '1');
-        params.set('rows', '1');
+        params.set('rows', '10');
         
         // Add timeline parameter
         params.set('timeline', selectedTimeline);
