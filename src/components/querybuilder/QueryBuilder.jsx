@@ -91,15 +91,29 @@ const operatorOptions = [
 
 // Helper function to parse URL params into an array
 const getParamsAsArray = (paramName) => {
-    const params = new URLSearchParams(window.location.search);
-    const paramValue = params.get(paramName);
-    return paramValue ? paramValue.split(',') : [];
+    try {
+        // Get the current URL search params
+        const search = window.location.search || '';
+        const params = new URLSearchParams(search);
+        const paramValue = params.get(paramName);
+        return paramValue ? paramValue.split(',').filter(Boolean) : [];
+    } catch (error) {
+        console.error('Error getting URL parameter array:', error);
+        return [];
+    }
 };
 
 // Helper function to get a single URL param
 const getSingleParam = (paramName, defaultValue) => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get(paramName) || defaultValue;
+    try {
+        // Get the current URL search params
+        const search = window.location.search || '';
+        const params = new URLSearchParams(search);
+        return params.get(paramName) || defaultValue;
+    } catch (error) {
+        console.error('Error getting URL parameter:', error);
+        return defaultValue;
+    }
 };
 
 const QueryBuilder = () => {
@@ -150,62 +164,103 @@ const QueryBuilder = () => {
         };
     });
 
-    // Effect to handle URL parameter changes
+    // Effect to handle URL parameter changes and initial load
     useEffect(() => {
         const handlePopState = () => {
-            const params = new URLSearchParams(window.location.search);
-            
-            // Update timeline
-            const newTimeline = params.get('timeline') || 'Today';
-            if (newTimeline !== selectedTimeline) {
-                setSelectedTimeline(newTimeline);
+            try {
+                // Get the search params from the current URL
+                const search = window.location.search || '';
+                const params = new URLSearchParams(search);
+                
+                console.log('Popstate - Current URL params:', search);
+                
+                // Check if we have all required parameters
+                const hasRequiredParams = params.has('origin') && params.has('destination');
+                
+                // If we're coming from the compare page, we might have the parameters in the state
+                const navigationState = window.history.state?.state || {};
+                const isFromCompare = navigationState.fromCompare === true;
+                
+                console.log('Navigation state:', navigationState);
+                
+                // Update timeline
+                const newTimeline = params.get('timeline') || 'Today';
+                if (newTimeline !== selectedTimeline) {
+                    setSelectedTimeline(newTimeline);
+                }
+                
+                // Update from locations - check both URL and state
+                let newFroms = getParamsAsArray('origin');
+                if (isFromCompare && newFroms.length === 0 && navigationState.origin) {
+                    newFroms = [navigationState.origin];
+                }
+                if (JSON.stringify(newFroms) !== JSON.stringify(selectedFroms)) {
+                    console.log('Updating from locations:', newFroms);
+                    setSelectedFroms(newFroms);
+                }
+                
+                // Update to locations - check both URL and state
+                let newTos = getParamsAsArray('destination');
+                if (isFromCompare && newTos.length === 0 && navigationState.destination) {
+                    newTos = [navigationState.destination];
+                }
+                if (JSON.stringify(newTos) !== JSON.stringify(selectedTos)) {
+                    console.log('Updating to locations:', newTos);
+                    setSelectedTos(newTos);
+                }
+                
+                // Update transport types
+                let newTransportTypes = getParamsAsArray('transport_type');
+                if (isFromCompare && newTransportTypes.length === 0 && navigationState.transport_type) {
+                    newTransportTypes = [navigationState.transport_type];
+                }
+                if (JSON.stringify(newTransportTypes) !== JSON.stringify(selectedTransportTypes)) {
+                    console.log('Updating transport types:', newTransportTypes);
+                    setSelectedTransportTypes(newTransportTypes);
+                }
+                
+                // Update operators
+                const newOperators = getParamsAsArray('operator_name');
+                if (JSON.stringify(newOperators) !== JSON.stringify(selectedOperators)) {
+                    console.log('Updating operators:', newOperators);
+                    setSelectedOperators(newOperators);
+                }
+                
+                // Update providers - default to both if not specified
+                let newProviders = ['12go', 'bookaway'];
+                if (params.get('provider')) {
+                    newProviders = params.get('provider').split(',').map(p => p.trim()).filter(Boolean);
+                } else if (isFromCompare && navigationState.provider) {
+                    newProviders = [navigationState.provider];
+                }
+                
+                if (JSON.stringify(newProviders) !== JSON.stringify(selectedProviders)) {
+                    console.log('Updating providers:', newProviders);
+                    setSelectedProviders(newProviders);
+                }
+                
+                // Update pagination
+                const first = parseInt(params.get('first') || '0', 10);
+                const rows = parseInt(params.get('rows') || '50', 10);
+                const newLazyParams = {
+                    first,
+                    rows,
+                    page: Math.floor(first / rows),
+                    sortField: params.get('sort_by') || 'departure_time',
+                    sortOrder: params.get('sort_order') === 'DESC' ? -1 : 1,
+                };
+                
+                console.log('Updating lazy params:', newLazyParams);
+                setLazyParams(newLazyParams);
+                
+                // If we have required params or came from compare, trigger a refetch
+                if (hasRequiredParams || isFromCompare) {
+                    console.log('Triggering data refetch');
+                    setTriggerFetch(prev => prev + 1);
+                }
+            } catch (error) {
+                console.error('Error handling popstate:', error);
             }
-            
-            // Update from locations
-            const newFroms = getParamsAsArray('origin');
-            if (JSON.stringify(newFroms) !== JSON.stringify(selectedFroms)) {
-                setSelectedFroms(newFroms);
-            }
-            
-            // Update to locations
-            const newTos = getParamsAsArray('destination');
-            if (JSON.stringify(newTos) !== JSON.stringify(selectedTos)) {
-                setSelectedTos(newTos);
-            }
-            
-            // Update transport types
-            const newTransportTypes = getParamsAsArray('transport_type');
-            if (JSON.stringify(newTransportTypes) !== JSON.stringify(selectedTransportTypes)) {
-                setSelectedTransportTypes(newTransportTypes);
-            }
-            
-            // Update operators
-            const newOperators = getParamsAsArray('operator_name');
-            if (JSON.stringify(newOperators) !== JSON.stringify(selectedOperators)) {
-                setSelectedOperators(newOperators);
-            }
-            
-            // Update providers
-            const newProviders = params.get('provider') ? 
-                params.get('provider').split(',').map(p => p.trim()) : 
-                ['12go', 'bookaway'];
-            if (JSON.stringify(newProviders) !== JSON.stringify(selectedProviders)) {
-                setSelectedProviders(newProviders);
-            }
-            
-            // Update pagination
-            const first = parseInt(params.get('first') || '0', 10);
-            const rows = parseInt(params.get('rows') || '50', 10);
-            setLazyParams({
-                first,
-                rows,
-                page: Math.floor(first / rows),
-                sortField: params.get('sort_by') || 'departure_time',
-                sortOrder: params.get('sort_order') === 'DESC' ? -1 : 1,
-            });
-            
-            // Trigger a refetch if needed
-            setTriggerFetch(prev => prev + 1);
         };
         
         // Add event listener for popstate (back/forward navigation)
@@ -232,21 +287,52 @@ const QueryBuilder = () => {
     const [triggerFetch, setTriggerFetch] = useState(0);
 
     // Function to update URL parameters
-    const updateUrlParams = (updates) => {
-        const params = new URLSearchParams(window.location.search);
-        
-        // Apply updates to URL parameters
-        Object.entries(updates).forEach(([key, value]) => {
-            if (value !== undefined && value !== null && value !== '') {
-                params.set(key, value);
-            } else {
-                params.delete(key);
+    const updateUrlParams = (updates, replace = false) => {
+        try {
+            const params = new URLSearchParams(window.location.search);
+            
+            console.log('Updating URL params with:', updates, 'replace:', replace);
+            
+            // Apply updates to URL parameters
+            Object.entries(updates).forEach(([key, value]) => {
+                if (value !== undefined && value !== null && value !== '') {
+                    params.set(key, value);
+                } else {
+                    params.delete(key);
+                }
+            });
+            
+            // Get the current pathname and clean it up
+            let pathname = window.location.pathname;
+            
+            // Remove any trailing slashes
+            while (pathname.endsWith('/') && pathname !== '/') {
+                pathname = pathname.slice(0, -1);
             }
-        });
-        
-        // Update URL without causing a page reload
-        const newUrl = `${window.location.pathname}?${params.toString()}`;
-        window.history.pushState({ path: newUrl }, '', newUrl);
+            
+            // If we're on a specific route, make sure we go back to the root
+            if (pathname.includes('compare') || pathname.includes('dashboard')) {
+                pathname = '/';
+            }
+            
+            // Create the new URL with proper path handling
+            const newUrl = `${pathname}?${params.toString()}`;
+            
+            console.log('New URL:', newUrl);
+            
+            // Update URL without causing a page reload
+            if (replace) {
+                window.history.replaceState({}, '', newUrl);
+            } else {
+                window.history.pushState({}, '', newUrl);
+            }
+            
+            // Return the new URL in case it's needed
+            return newUrl;
+        } catch (error) {
+            console.error('Error updating URL params:', error);
+            return null;
+        }
     };
 
     // Add custom pagination styles

@@ -463,33 +463,47 @@ const CompareTable = ({
     };
 
     const handleViewRoutesClick = (provider) => {
-      const params = new URLSearchParams();
-      
-      // Add current filters to the URL - using 'origin' and 'destination' instead of 'from' and 'to'
-      if (selectedFroms?.length === 1) params.set('origin', selectedFroms[0]);
-      if (selectedTos?.length === 1) params.set('destination', selectedTos[0]);
-      if (selectedTransportTypes?.length === 1) params.set('transport_type', selectedTransportTypes[0]);
-      
-      // Set the provider, column and rows
-      params.set('provider', provider);
-      params.set('column', '1');
-      params.set('columns', '1');
-      params.set('rows', '1');
-      
-      // Use the selectedTimeline prop from the parent component
-      params.set('timeline', selectedTimeline);
-      
-      console.log('Navigating with params:', params.toString());
-      
-      // Add view and tab parameters to the search params
-      params.set('view', 'virtualize');
-      params.set('tab', 'custom-dashboard');
-      
-      // Navigate to the root with all parameters
-      navigate({
-        pathname: '/',
-        search: params.toString()
-      }, { replace: true });
+      try {
+        console.log('handleViewRoutesClick called with provider:', provider);
+        
+        // Create URLSearchParams object
+        const params = new URLSearchParams();
+        
+        // Add current filters to the URL
+        if (selectedFroms?.length === 1) params.set('origin', selectedFroms[0]);
+        if (selectedTos?.length === 1) params.set('destination', selectedTos[0]);
+        if (selectedTransportTypes?.length === 1) params.set('transport_type', selectedTransportTypes[0]);
+        
+        // Set the provider and pagination parameters
+        params.set('provider', provider);
+        params.set('column', '1');
+        params.set('columns', '1');
+        params.set('rows', '1');
+        
+        // Add timeline parameter
+        params.set('timeline', selectedTimeline);
+        
+        // Add view and tab parameters
+        params.set('view', 'virtualize');
+        params.set('tab', 'custom-dashboard');
+        
+        // Log the parameters for debugging
+        console.log('Navigation parameters:', params.toString());
+        
+        // Navigate to the root with all parameters
+        // Using replace: true to replace the current history entry
+        navigate({
+          pathname: '/',
+          search: params.toString()
+        }, { 
+          replace: true,
+          state: { fromCompare: true } // Add state to track navigation from compare
+        });
+        
+        console.log('Navigation complete');
+      } catch (error) {
+        console.error('Error in handleViewRoutesClick:', error);
+      }
     };
 
     // Filter the metrics based on what's selected and ensure all required properties exist
